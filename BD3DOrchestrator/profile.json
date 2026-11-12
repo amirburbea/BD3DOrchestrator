@@ -1,0 +1,47 @@
+{
+  // Shared encoding profile: copy this identical file to every PC.
+  // Applied by the generated plugin.tcl AFTER the local BD3D2MK3D.cfg is loaded, so it always wins.
+  // Machine-specific things (paths, hardware decode: MVCDecHw, useFRIM, power plans) are deliberately NOT here.
+  "OutputNameTemplate": "{title}.3d.tab.mkv",
+  "MkvTitleTemplate": "{title}",
+  "Settings": {
+    "half": 1,
+    "stereomode": 0,
+    "evenodd": 0,
+    "fps30": 0,
+    "resize720": 0,
+    "no1080p": 1,
+    "nostereostr": 0,
+    "3DExtension": "none",
+    "fnamespaces": " ",
+    "fnameext": ".mkv",
+    "tbstring": "TAB",
+    "no_director": 0,
+    "core": 0,
+    "convertaudio": 0,
+    "substypes": "3D only",
+    "subsformat": "sup",
+    "attachfiles": 1,
+    "use_x265": 0,
+    "use_custom_encoder": 0,
+    "x264preset": "slow",
+    "x264tune": "film",
+    "force_level": "force 4.1",
+    "x264BDcompat": 0,
+    "x264mode": "CRF",
+    "x264crf": 18,
+    "x264options": "--aq-mode 2 --aq-strength 0.7 --deblock -2:-2 --no-mbtree --qcomp 0.70",
+    "color_depth_x264": "8 bits",
+    "encoderTags": 1,
+    "muxtomkv": 1,
+    "autolaunch": 0,
+    "mkv_no_cue_duration": 1,
+    "mkv_no_cue_relative_position": 1,
+    "mkv_clusters_in_meta_seek": 0,
+    "mkv_disable_lacing": 0,
+    "mkv_no_simpleblocks": 0,
+    "mkv_disable_track_statistics": 1,
+    "mkv_no_stereo_mode": 0,
+    "avc_no_frame_packing": 0
+  }
+}
