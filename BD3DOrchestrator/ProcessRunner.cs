@@ -14,46 +14,40 @@ public class ProcessRunner
         string? workingDir = null,
         Action<string>? onStdout = null,
         Action<string>? onStderr = null,
-        CancellationToken ct = default)
+        CancellationToken cancellationToken = default
+    )
     {
-        ProcessStartInfo psi = new()
+        using Process process = new()
         {
-            FileName = executable,
-            Arguments = arguments,
-            WorkingDirectory = workingDir ?? Directory.GetCurrentDirectory(),
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        using Process process = new() { StartInfo = psi };
-        StringWriter stdoutWriter = new();
-        StringWriter stderrWriter = new();
-
-        process.OutputDataReceived += (s, e) =>
-        {
-            if (e.Data is { } data)
+            StartInfo = new()
             {
-                stdoutWriter.WriteLine(data);
-                onStdout?.Invoke(data);
+                FileName = executable,
+                Arguments = arguments,
+                WorkingDirectory = workingDir ?? Directory.GetCurrentDirectory(),
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
             }
         };
-
-        process.ErrorDataReceived += (s, e) =>
-        {
-            if (e.Data is { } data)
-            {
-                stderrWriter.WriteLine(data);
-                onStderr?.Invoke(data);
-            }
-        };
-
+        using StringWriter outputDataWriter = new();
+        process.OutputDataReceived += DataHandler(outputDataWriter, onStdout);
+        using StringWriter errorDataWriter = new();
+        process.ErrorDataReceived += DataHandler(errorDataWriter, onStderr);
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        return (process.ExitCode, outputDataWriter.ToString(), errorDataWriter.ToString());
 
-        await process.WaitForExitAsync(ct).ConfigureAwait(false);
-        return (process.ExitCode, stdoutWriter.ToString(), stderrWriter.ToString());
+        static DataReceivedEventHandler DataHandler(StringWriter writer, Action<string>? onData) => (s, e) =>
+        {
+            if (e.Data is not { } data)
+            {
+                return;
+            }
+            writer.WriteLine(data);
+            onData?.Invoke(data);
+        };
     }
 }

@@ -10,18 +10,15 @@ public class AppSettingsValidator : IValidateOptions<AppSettings>
     public ValidateOptionsResult Validate(string? name, AppSettings options)
     {
         List<string> failures = [];
-
         RequireDirectory(failures, nameof(options.ToolsetDirectory), options.ToolsetDirectory);
         RequireFile(failures, nameof(options.BD3DExecutable), options.BD3DExecutable);
         RequireFile(failures, nameof(options.FfmpegExecutable), options.FfmpegExecutable);
         RequireRooted(failures, nameof(options.ProjectDirectory), options.ProjectDirectory, allowEmpty: false);
         RequireRooted(failures, nameof(options.OutputDirectory), options.OutputDirectory, allowEmpty: true);
-
         if (!File.Exists(options.ResolvedProfilePath))
         {
             failures.Add($"Encoding profile not found: '{options.ResolvedProfilePath}' (set ProfilePath or put profile.json next to the exe).");
         }
-
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 

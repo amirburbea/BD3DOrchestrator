@@ -24,10 +24,9 @@ public static class Program
             MessageBox.Show(Describe(ex), "BD3D Orchestrator: cannot start", MessageBoxButton.OK, MessageBoxImage.Error);
             return;
         }
-
         using (host)
         {
-            App app = new(host.Services);
+            App app = host.Services.GetRequiredService<App>();
             app.InitializeComponent();
             app.Run();
         }
@@ -41,7 +40,6 @@ public static class Program
             Args = args,
             ContentRootPath = AppContext.BaseDirectory
         });
-
         // Settings come only from these sources (later wins), so a typo'd or stale key is an error instead of being ignored:
         //   appsettings.json        shared, identical on every PC
         //   appsettings.local.json  optional, this PC only (e.g. the Beelink's D:/C: project/output split)
@@ -52,19 +50,19 @@ public static class Program
             .AddJsonFile("appsettings.local.json", optional: true)
             .AddEnvironmentVariables("BD3D_")
             .Build();
-
         builder.Services
             .AddOptions<AppSettings>()
             .Bind(settingsConfig, binder => binder.ErrorOnUnknownConfiguration = true)
             .PostConfigure(settings => settings.ExpandEnvironmentVariables())
             .ValidateOnStart();
-        builder.Services.AddSingleton<IValidateOptions<AppSettings>, AppSettingsValidator>();
-        builder.Services.AddSingleton(sp => sp.GetRequiredService<IOptions<AppSettings>>().Value);
-
-        builder.Services.AddSingleton<MainViewModel>();
-        builder.Services.AddSingleton(sp => new JobRunner(sp.GetRequiredService<AppSettings>(), sp.GetRequiredService<MainViewModel>().Log));
-        builder.Services.AddSingleton<MainWindow>();
-
+        builder.Services
+            .AddSingleton<IValidateOptions<AppSettings>, AppSettingsValidator>()
+            .AddSingleton(sp => sp.GetRequiredService<IOptions<AppSettings>>().Value)
+            .AddSingleton<MainWindowViewModel>()
+            .AddSingleton(sp => new JobRunner(sp.GetRequiredService<AppSettings>(), sp.GetRequiredService<MainWindowViewModel>().Log))
+            .AddSingleton<App>()
+            .AddSingleton<MainWindow>()
+            .AddSingleton<Func<MainWindow>>(sp => () => sp.GetRequiredService<MainWindow>());
         return builder.Build();
     }
 

@@ -1,15 +1,14 @@
 using System;
-using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Threading;
 
 namespace BD3DOrchestrator;
 
 /// <summary>App-level UI state. Everything about one movie lives on <see cref="Job"/>.</summary>
-public class MainViewModel : ObservableObject
+public class MainWindowViewModel : ObservableObject
 {
-    /// <summary>Only ever modified on the UI thread, via <see cref="Log"/>.</summary>
-    public ObservableCollection<string> LogEntries { get; } = [];
+    /// <summary>Raised on the UI thread (or the calling thread when there is no UI) with each timestamped log line. The view owns the text.</summary>
+    public event Action<string>? LineLogged;
 
     public Job Job
     {
@@ -37,17 +36,17 @@ public class MainViewModel : ObservableObject
         set => this.SetField(ref field, value);
     } = "🚀 Auto-Run Pipeline (Demux ➔ Patch AVS ➔ Ingest Audio ➔ Encode & Mux)";
 
-    /// <summary>Timestamps a message and appends it to the log on the UI thread: queued when called from another thread, added directly when already on the UI thread or when there is no UI (e.g. in tests).</summary>
+    /// <summary>Timestamps a message and raises <see cref="LineLogged"/> on the UI thread: queued when called from another thread, raised directly when already on the UI thread or when there is no UI (e.g. in tests).</summary>
     public void Log(string message)
     {
         string formatted = $"[{DateTime.Now:HH:mm:ss}] {message}";
         if (Application.Current?.Dispatcher is { } dispatcher && !dispatcher.CheckAccess())
         {
-            dispatcher.BeginInvoke(() => this.LogEntries.Add(formatted), DispatcherPriority.Background);
+            dispatcher.BeginInvoke(() => this.LineLogged?.Invoke(formatted), DispatcherPriority.Background);
         }
         else
         {
-            this.LogEntries.Add(formatted);
+            this.LineLogged?.Invoke(formatted);
         }
     }
 }

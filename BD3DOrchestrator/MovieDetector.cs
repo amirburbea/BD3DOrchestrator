@@ -57,18 +57,15 @@ public static partial class MovieDetector
         {
             raw = raw[..^7];
         }
-
-        Match match = TitleAndYearRegex().Match(raw);
-        if (match.Success)
+        if (TitleAndYearRegex().Match(raw) is { Success: true, Groups: { } groups })
         {
-            string cleanTitle = match.Groups[1].Value.Trim();
-            string yearStr = !string.IsNullOrEmpty(match.Groups[2].Value) ? match.Groups[2].Value : match.Groups[3].Value;
+            string cleanTitle = groups[1].Value.Trim();
+            string yearStr = !string.IsNullOrEmpty(groups[2].Value) ? groups[2].Value : groups[3].Value;
             if (int.TryParse(yearStr, out int parsedYear))
             {
                 return (cleanTitle, parsedYear);
             }
         }
-
         return (raw.Trim(), 0);
     }
 
@@ -77,19 +74,16 @@ public static partial class MovieDetector
         string dir = Directory.Exists(path) ? path : (Path.GetDirectoryName(path) ?? ".");
         string nameCandidate = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         (string title, int year) = ParseTitleAndYear(nameCandidate);
-
         // 1. Check local .nfo if available in the folder
         if (TryReadNfo(dir) is { } nfoInfo)
         {
             return nfoInfo;
         }
-
         // 2. Check offline known 3D animations list
         if (Known3DAnimations.Contains(title))
         {
             return new(title, year, true, $"Matched 3D Animation database ({title})");
         }
-
         // Partial match against known animation titles
         foreach (string known in Known3DAnimations)
         {
@@ -98,12 +92,11 @@ public static partial class MovieDetector
                 return new(title, year, true, $"Matched 3D Animation database ({known})");
             }
         }
-
         // 3. Fallback: Query iTunes search API (No API key needed)
         try
         {
             string queryUrl = $"https://itunes.apple.com/search?term={Uri.EscapeDataString(title)}&entity=movie&limit=3";
-            HttpResponseMessage response = await _httpClient.GetAsync(queryUrl).ConfigureAwait(false);
+            using HttpResponseMessage response = await _httpClient.GetAsync(queryUrl).ConfigureAwait(false);
             if (response.IsSuccessStatusCode)
             {
                 string jsonString = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
@@ -114,13 +107,11 @@ public static partial class MovieDetector
                     {
                         string genre = item.TryGetProperty("primaryGenreName", out JsonElement genreElem) ? (genreElem.GetString() ?? "") : "";
                         string releaseDate = item.TryGetProperty("releaseDate", out JsonElement dateElem) ? (dateElem.GetString() ?? "") : "";
-
                         int parsedYear = year;
                         if (parsedYear == 0 && releaseDate.Length >= 4 && int.TryParse(releaseDate[..4], out int y))
                         {
                             parsedYear = y;
                         }
-
                         if (genre.Equals("Animation", StringComparison.OrdinalIgnoreCase))
                         {
                             return new(title, parsedYear, true, "Apple Movie API confirmed Animation");
@@ -133,7 +124,6 @@ public static partial class MovieDetector
         {
             // Network lookup failed, fallback gracefully
         }
-
         return new(title, year, false, "Live action or unconfirmed");
     }
 
@@ -145,23 +135,17 @@ public static partial class MovieDetector
             {
                 return null;
             }
-
-            string[] nfoFiles = Directory.GetFiles(directory, "*.nfo");
-            if (nfoFiles.Length == 0)
+            if (Directory.GetFiles(directory, "*.nfo") is not [{ } xmlFile, ..])
             {
                 return null;
             }
-
-            string xml = File.ReadAllText(nfoFiles[0]);
+            string xml = File.ReadAllText(xmlFile);
             Match genreMatch = GenreRegex().Match(xml);
             Match yearMatch = YearRegex().Match(xml);
             Match titleMatch = TitleRegex().Match(xml);
-
             string title = titleMatch.Success ? titleMatch.Groups[1].Value : "";
             int year = yearMatch.Success && int.TryParse(yearMatch.Groups[1].Value, out int y) ? y : 0;
-            bool isAnimation = genreMatch.Success && genreMatch.Groups[1].Value.Contains("Animation", StringComparison.OrdinalIgnoreCase);
-
-            if (isAnimation)
+            if (genreMatch.Success && genreMatch.Groups[1].Value.Contains("Animation", StringComparison.OrdinalIgnoreCase))
             {
                 return new(title, year, true, "Detected from local .nfo metadata");
             }
@@ -169,7 +153,6 @@ public static partial class MovieDetector
         catch
         {
         }
-
         return null;
     }
 

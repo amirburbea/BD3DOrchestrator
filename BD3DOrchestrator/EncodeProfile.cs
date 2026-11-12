@@ -13,6 +13,8 @@ namespace BD3DOrchestrator;
 /// </summary>
 public class EncodeProfile
 {
+    private static readonly char[] _sanitizeChars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+
     public string OutputNameTemplate { get; private set; } = "{title}.3d.tab.mkv";
     public string MkvTitleTemplate { get; private set; } = "{title}";
     public IReadOnlyList<KeyValuePair<string, string>> Settings => this._settings;
@@ -26,21 +28,17 @@ public class EncodeProfile
         string raw = File.ReadAllText(path);
         JsonDocumentOptions options = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
         using JsonDocument doc = JsonDocument.Parse(raw, options);
-
         EncodeProfile profile = new() { SourcePath = path };
         JsonElement root = doc.RootElement;
-
         if (root.TryGetProperty(nameof(OutputNameTemplate), out JsonElement nameElem) && nameElem.GetString() is { Length: > 0 } name)
         {
             profile.OutputNameTemplate = name;
         }
-
         if (root.TryGetProperty(nameof(MkvTitleTemplate), out JsonElement titleElem) && titleElem.GetString() is { Length: > 0 } title)
         {
             profile.MkvTitleTemplate = title;
         }
-
-        if (root.TryGetProperty(nameof(Settings), out JsonElement settings) && settings.ValueKind == JsonValueKind.Object)
+        if (root.TryGetProperty(nameof(Settings), out JsonElement settings) && settings.ValueKind is JsonValueKind.Object)
         {
             foreach (JsonProperty prop in settings.EnumerateObject())
             {
@@ -54,7 +52,6 @@ public class EncodeProfile
                 profile._settings.Add(new(prop.Name, value));
             }
         }
-
         // Hash only what affects output, so comments/whitespace edits don't change it.
         StringBuilder canon = new();
         canon.Append(profile.OutputNameTemplate).Append('\n').Append(profile.MkvTitleTemplate).Append('\n');
@@ -62,7 +59,6 @@ public class EncodeProfile
         {
             canon.Append(key).Append('=').Append(value).Append('\n');
         }
-
         profile.Hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canon.ToString())))[..12].ToLowerInvariant();
         return profile;
     }
@@ -79,7 +75,6 @@ public class EncodeProfile
             sb.Append("set ::config(").Append(key).Append(") ").Append(v).Append('\n');
             sb.Append("set ::").Append(key).Append(' ').Append(v).Append('\n');
         }
-
         return sb.ToString();
     }
 
@@ -92,20 +87,17 @@ public class EncodeProfile
             {
                 sb.Append('\\');
             }
-
             sb.Append(c);
         }
-
         return sb.Append('"').ToString();
     }
 
     public static string SanitizeFileName(string name)
     {
-        foreach (char c in new[] { '<', '>', ':', '"', '/', '\\', '|', '?', '*' })
+        foreach (char c in _sanitizeChars)
         {
             name = name.Replace(c.ToString(), "");
         }
-
         return name.Trim().TrimEnd('.');
     }
 }

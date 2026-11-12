@@ -2,29 +2,26 @@ using System;
 using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace BD3DOrchestrator;
 
-public partial class App(IServiceProvider services) : Application
+public partial class App(Func<MainWindow> mainWindowFactory) : Application
 {
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-
         // 1. AppDomain Unhandled Exceptions (general thread pool / background threads)
         AppDomain.CurrentDomain.UnhandledException += (s, args) =>
         {
             if (args.ExceptionObject is Exception ex)
             {
-                this.LogCrash("AppDomain", ex);
+                LogCrash("AppDomain", ex);
             }
         };
-
         // 2. WPF Dispatcher Unhandled Exceptions (UI thread)
         this.DispatcherUnhandledException += (s, args) =>
         {
-            this.LogCrash("WPF Dispatcher", args.Exception);
+            LogCrash("WPF Dispatcher", args.Exception);
             MessageBox.Show(
                 $"An error occurred: {args.Exception.Message}\r\n\r\nDetails written to crash.log",
                 "Unhandled Exception",
@@ -33,19 +30,17 @@ public partial class App(IServiceProvider services) : Application
             );
             args.Handled = true;
         };
-
         // 3. TaskScheduler Unobserved Task Exceptions (unawaited async tasks)
         TaskScheduler.UnobservedTaskException += (s, args) =>
         {
-            this.LogCrash("TaskScheduler", args.Exception);
+            LogCrash("TaskScheduler", args.Exception);
             args.SetObserved();
         };
-
-        this.MainWindow = services.GetRequiredService<MainWindow>();
+        this.MainWindow = mainWindowFactory();
         this.MainWindow.Show();
     }
 
-    private void LogCrash(string source, Exception ex)
+    private static void LogCrash(string source, Exception ex)
     {
         try
         {
@@ -57,7 +52,6 @@ public partial class App(IServiceProvider services) : Application
                 entry += $"InnerException: {inner.GetType().FullName}: {inner.Message}\r\n{inner.StackTrace}\r\n";
             }
             entry += new string('-', 80) + "\r\n";
-
             File.AppendAllText(logPath, entry);
         }
         catch
