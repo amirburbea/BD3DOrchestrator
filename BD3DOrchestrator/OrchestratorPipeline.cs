@@ -12,6 +12,19 @@ namespace BD3DOrchestrator;
 
 public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logger)
 {
+    private static readonly HashSet<string> _trackOptionSwitches =
+    [
+        with(StringComparer.OrdinalIgnoreCase),
+        "--track-name",
+        "--language",
+        "--default-track",
+        "--forced-track",
+        "--sync",
+        "--compression",
+        "--audio-tracks",
+        "--cues"
+    ];
+
     private static readonly JsonSerializerOptions _writeOptions = new()
     {
         WriteIndented = true,
@@ -19,55 +32,57 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
     };
 
     /// <summary>
-    /// Locates the DTS / DTS-HD file that BD3D2MK3D (tsMuxeR) already demuxed into the project folder,
-    /// by reading the audio entry from __MUX_3D_OPTIONS.json. Falls back to scanning the project folder
-    /// for a demuxed .dts/.dtshd file. Never touches the source MKV.
+    /// Replaces BD3D2MK3D's generated output file name (Title + stereo/resolution/director
+    /// suffixes) and MKV segment title in the mux option files with the profile's naming template.
+    /// The output directory chosen by BD3D2MK3D is preserved.
     /// </summary>
-    public string? FindDemuxedDtsFile(string projectMkv3dDir)
+    public void ApplyOutputNaming(string projectMkv3dDir, string title, EncodeProfile profile)
     {
-        string jsonPath = Path.Combine(projectMkv3dDir, "__MUX_3D_OPTIONS.json");
-        if (File.Exists(jsonPath))
+        string cleanTitle = EncodeProfile.SanitizeFileName(title);
+        foreach (string name in new[] { "__MUX_3D_OPTIONS.json", "_CUSTOM_MUX_3D_OPTIONS.json" })
         {
+            string jsonPath = Path.Combine(projectMkv3dDir, name);
+            if (!File.Exists(jsonPath))
+            {
+                continue;
+            }
             try
             {
-                JsonDocumentOptions options = new()
+                JsonDocumentOptions options = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+                List<string> args = [];
+                using (JsonDocument doc = JsonDocument.Parse(File.ReadAllText(jsonPath), options))
                 {
-                    CommentHandling = JsonCommentHandling.Skip,
-                    AllowTrailingCommas = true
-                };
-                using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(jsonPath), options);
-                foreach (JsonElement element in doc.RootElement.EnumerateArray())
+                    args.AddRange(doc.RootElement.EnumerateArray().Select(element => element.GetString() ?? ""));
+                }
+                bool custom = name.StartsWith("_CUSTOM", StringComparison.OrdinalIgnoreCase);
+                for (int i = 0; i < args.Count - 1; i++)
                 {
-                    string arg = element.GetString() ?? "";
-                    if (arg.EndsWith(".dts", StringComparison.OrdinalIgnoreCase) ||
-                        arg.EndsWith(".dtshd", StringComparison.OrdinalIgnoreCase))
+                    switch (args[i])
                     {
-                        string candidate = Path.Combine(projectMkv3dDir, arg);
-                        if (File.Exists(candidate))
-                        {
-                            logger($"[Audio] __MUX_3D_OPTIONS.json references demuxed DTS: {arg}");
-                            return candidate;
-                        }
-                        logger($"[Audio] Warning: JSON references '{arg}' but it is not on disk.");
+                        case "--output":
+                            {
+                                string fileName = EncodeProfile.ApplyTitle(profile.OutputNameTemplate, cleanTitle);
+                                if (custom)
+                                {
+                                    fileName = $"{Path.ChangeExtension(fileName, null)}.custom{Path.GetExtension(fileName)}";
+                                }
+                                string newPath = Path.GetDirectoryName(args[i + 1]) is { Length: > 0 } dir ? Path.Combine(dir, fileName) : fileName;
+                                logger($"[Naming] {Path.GetFileName(args[i + 1])} -> {fileName}");
+                                args[i + 1] = newPath;
+                            }
+                            break;
+                        case "--title":
+                            args[i + 1] = EncodeProfile.ApplyTitle(profile.MkvTitleTemplate, title);
+                            break;
                     }
                 }
+                File.WriteAllText(jsonPath, JsonSerializer.Serialize(args, _writeOptions));
             }
             catch (Exception ex)
             {
-                logger($"[Audio] Could not parse __MUX_3D_OPTIONS.json: {ex.Message}");
+                logger($"[Naming] Error renaming output in {name}: {ex.Message}");
             }
         }
-        // Local-only fallback (element.g. JSON already patched by a previous run)
-        string? scanned = Directory.GetFiles(projectMkv3dDir, "*.*")
-            .Where(f => f.EndsWith(".dts", StringComparison.OrdinalIgnoreCase) ||
-                        f.EndsWith(".dtshd", StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(f => new FileInfo(f).Length)
-            .FirstOrDefault();
-        if (scanned != null)
-        {
-            logger($"[Audio] Using demuxed DTS found in project folder: {Path.GetFileName(scanned)}");
-        }
-        return scanned;
     }
 
     /// <summary>
@@ -89,8 +104,8 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
             logger("[Audio] Warning: Could not ffprobe audio streams, falling back to 5.1 EAC3 direct copy/downmix.");
         }
         string[] parts = probeData.Trim().ToLower().Split(',');
-        string codec = parts.Length > 0 ? parts[0].Trim() : "";
-        int channels = parts.Length > 2 && int.TryParse(parts[2].Trim(), out int ch) ? ch : 6;
+        string codec = parts is [{ } token, ..] ? token.Trim() : "";
+        int channels = parts is [_, _, { } count, ..] && int.TryParse(count.Trim(), out int ch) ? ch : 6;
         logger($"[Audio] Detected audio: Codec={codec}, Channels={channels}");
         List<string> audioArgs = [];
         if (channels == 8)
@@ -132,6 +147,57 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
         return null;
     }
 
+    /// <summary>
+    /// Locates the DTS / DTS-HD file that BD3D2MK3D (tsMuxeR) already demuxed into the project
+    /// folder, by reading the audio entry from __MUX_3D_OPTIONS.json. Falls back to scanning the
+    /// project folder for a demuxed .dts/.dtshd file. Never touches the source MKV.
+    /// </summary>
+    public string? FindDemuxedDtsFile(string projectMkv3dDir)
+    {
+        string jsonPath = Path.Combine(projectMkv3dDir, "__MUX_3D_OPTIONS.json");
+        if (File.Exists(jsonPath))
+        {
+            try
+            {
+                JsonDocumentOptions options = new()
+                {
+                    CommentHandling = JsonCommentHandling.Skip,
+                    AllowTrailingCommas = true
+                };
+                using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(jsonPath), options);
+                foreach (JsonElement element in doc.RootElement.EnumerateArray())
+                {
+                    string arg = element.GetString() ?? "";
+                    if (arg.EndsWith(".dts", StringComparison.OrdinalIgnoreCase) ||
+                        arg.EndsWith(".dtshd", StringComparison.OrdinalIgnoreCase))
+                    {
+                        string candidate = Path.Combine(projectMkv3dDir, arg);
+                        if (File.Exists(candidate))
+                        {
+                            logger($"[Audio] __MUX_3D_OPTIONS.json references demuxed DTS: {arg}");
+                            return candidate;
+                        }
+                        logger($"[Audio] Warning: JSON references '{arg}' but it is not on disk.");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger($"[Audio] Could not parse __MUX_3D_OPTIONS.json: {ex.Message}");
+            }
+        }
+        // Local-only fallback (element.g. JSON already patched by a previous run)
+        string? scanned = Directory.GetFiles(projectMkv3dDir, "*.*")
+            .Where(f => f.EndsWith(".dts", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".dtshd", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(f => new FileInfo(f).Length)
+            .FirstOrDefault();
+        if (scanned != null)
+        {
+            logger($"[Audio] Using demuxed DTS found in project folder: {Path.GetFileName(scanned)}");
+        }
+        return scanned;
+    }
+
     public bool InjectAvsTweak(string projectMkv3dDir)
     {
         string avsFile = Path.Combine(projectMkv3dDir, "__ENCODE_3D_MOVIE.avs");
@@ -158,80 +224,24 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
 
     public void NeutralizePostProcessCmd(string projectMkv3dDir)
     {
-        string[] targetFiles =
-        [
-            Path.Combine(projectMkv3dDir, "__POSTPROCESS_3D.cmd"),
-            Path.Combine(projectMkv3dDir, "_CUSTOM_POSTPROCESS_3D.cmd"),
-            Path.Combine(projectMkv3dDir, "_POSTPROCESS_2D.cmd")
-        ];
-        foreach (string targetFile in targetFiles)
+        foreach (string name in new[] { "__POSTPROCESS_3D.cmd", "_CUSTOM_POSTPROCESS_3D.cmd", "_POSTPROCESS_2D.cmd" })
         {
+            string targetFile = Path.Combine(projectMkv3dDir, name);
             if (!File.Exists(targetFile))
             {
                 continue;
             }
-            // BD3D puts "start "" ." and "pause" at the end of post-process scripts which pops Explorer and blocks exit!
+            // BD3D puts "start "" ." and "pause" at the end of post-process scripts which pops
+            // Explorer and blocks exit!
             File.WriteAllText(targetFile, "@echo off\r\nREM Neutralized Explorer popup and pause\r\nexit /B 0\r\n");
             logger($"[PostProcess] Neutralized {Path.GetFileName(targetFile)} (disabled 'pause' and Explorer popups).");
         }
     }
 
-    /// <summary>
-    /// Replaces BD3D2MK3D's generated output file name (Title + stereo/resolution/director suffixes) and
-    /// MKV segment title in the mux option files with the profile's naming template.
-    /// The output directory chosen by BD3D2MK3D is preserved.
-    /// </summary>
-    public void ApplyOutputNaming(string projectMkv3dDir, string title, EncodeProfile profile)
-    {
-        string cleanTitle = EncodeProfile.SanitizeFileName(title);
-        foreach (string name in new[] { "__MUX_3D_OPTIONS.json", "_CUSTOM_MUX_3D_OPTIONS.json" })
-        {
-            string jsonPath = Path.Combine(projectMkv3dDir, name);
-            if (!File.Exists(jsonPath))
-            {
-                continue;
-            }
-            try
-            {
-                JsonDocumentOptions options = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
-                List<string> args = [];
-                using (JsonDocument doc = JsonDocument.Parse(File.ReadAllText(jsonPath), options))
-                {
-                    args.AddRange(doc.RootElement.EnumerateArray().Select(element => element.GetString() ?? ""));
-                }
-                bool custom = name.StartsWith("_CUSTOM", StringComparison.OrdinalIgnoreCase);
-                for (int i = 0; i < args.Count - 1; i++)
-                {
-                    if (args[i] == "--output")
-                    {
-                        string fileName = EncodeProfile.ApplyTitle(profile.OutputNameTemplate, cleanTitle);
-                        if (custom)
-                        {
-                            fileName = $"{Path.ChangeExtension(fileName, null)}.custom{Path.GetExtension(fileName)}";
-                        }
-                        string newPath = Path.GetDirectoryName(args[i + 1]) is { Length: > 0 } dir ? Path.Combine(dir, fileName) : fileName;
-                        logger($"[Naming] {Path.GetFileName(args[i + 1])} -> {fileName}");
-                        args[i + 1] = newPath;
-                    }
-                    else if (args[i] == "--title")
-                    {
-                        args[i + 1] = EncodeProfile.ApplyTitle(profile.MkvTitleTemplate, title);
-                    }
-                }
-                File.WriteAllText(jsonPath, JsonSerializer.Serialize(args, _writeOptions));
-            }
-            catch (Exception ex)
-            {
-                logger($"[Naming] Error renaming output in {name}: {ex.Message}");
-            }
-        }
-    }
-
     public bool UpdateMuxJson(string projectMkv3dDir, string? customEac3File, IReadOnlyList<string> companionFiles)
     {
-        string[] targetFiles = ["__MUX_3D_OPTIONS.json", "_CUSTOM_MUX_3D_OPTIONS.json"];
         bool anyUpdated = false;
-        foreach (string targetName in targetFiles)
+        foreach (string targetName in new[] { "__MUX_3D_OPTIONS.json", "_CUSTOM_MUX_3D_OPTIONS.json" })
         {
             string jsonPath = Path.Combine(projectMkv3dDir, targetName);
             if (!File.Exists(jsonPath))
@@ -258,18 +268,6 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
             };
             using JsonDocument doc = JsonDocument.Parse(rawJson, options);
             List<string> arguments = [.. doc.RootElement.EnumerateArray().Select(element => element.GetString() ?? "")];
-            HashSet<string> trackOptionSwitches =
-            [
-                with(StringComparer.OrdinalIgnoreCase),
-                "--track-name",
-                "--language",
-                "--default-track",
-                "--forced-track",
-                "--sync",
-                "--compression",
-                "--audio-tracks",
-                "--cues"
-            ];
             // If we converted DTS to custom EAC3, strip original DTS/DTS-HD audio tracks from arguments
             if (!string.IsNullOrEmpty(customEac3File) && File.Exists(customEac3File))
             {
@@ -291,7 +289,7 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
                         break;
                     }
                     int startIndex = dtsIndex;
-                    while (startIndex >= 2 && trackOptionSwitches.Contains(arguments[startIndex - 2]))
+                    while (startIndex >= 2 && _trackOptionSwitches.Contains(arguments[startIndex - 2]))
                     {
                         startIndex -= 2;
                     }
@@ -334,8 +332,8 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
                 arguments.Add(Path.GetFileName(destEac3));
                 hasAudioTrack = true;
             }
-            // If still no audio track in JSON, check if tsMuxeR demuxed an audio file in the project folder
-            // that BD3D2MK3D missed or failed to rename (element.g. *.ec3, *.ac3, *.dts)
+            // If still no audio track in JSON, check if tsMuxeR demuxed an audio file in the
+            // project folder that BD3D2MK3D missed or failed to rename (element.g. *.ec3, *.ac3, *.dts)
             if (!hasAudioTrack)
             {
                 List<string> audioCandidates = [];

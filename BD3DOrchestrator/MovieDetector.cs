@@ -4,15 +4,16 @@ using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BD3DOrchestrator;
 
 public record MovieInfo(string Title, int Year, bool IsAnimation, string Reason);
 
-public static partial class MovieDetector
+public partial class MovieDetector(HttpClient httpClient)
 {
-    private static readonly HashSet<string> Known3DAnimations = [
+    private static readonly HashSet<string> _known3DAnimations = [
         with(StringComparer.OrdinalIgnoreCase),
         "Toy Story", "Toy Story 2", "Toy Story 3", "Toy Story 4",
         "Finding Nemo", "Finding Dory", "Monsters, Inc.", "Monsters Inc", "Monsters University",
@@ -40,15 +41,10 @@ public static partial class MovieDetector
         "Arthur Christmas", "The Pirates! Band of Misfits", "The Smurfs", "The Smurfs 2", "Smurfs: The Lost Village",
         "Spider-Man: Into the Spider-Verse", "Spider-Man: Across the Spider-Verse",
         "The Lego Movie", "The Lego Batman Movie", "The Lego Ninjago Movie", "The Lego Movie 2: The Second Part",
-        "Coraline", "ParaNorman", "The Boxtrolls", "Kubo and the Two Strings",
+        "Coraline", "ParaNorman", "The Boxtrolls", "Kubo and the Two Strings", "Puss in Boots",
         "The Nightmare Before Christmas", "Frankenweenie", "Monster House", "Beowulf", "The Polar Express",
-        "A Christmas Carol", "Mars Needs Moms", "The Adventures of Tintin", "Legend of the Guardians"
+        "A Christmas Carol", "Mars Needs Moms", "The Adventures of Tintin", "Legend of the Guardians",
     ];
-
-    private static readonly HttpClient _httpClient = new()
-    {
-        Timeout = TimeSpan.FromSeconds(5)
-    };
 
     public static (string Title, int Year) ParseTitleAndYear(string input)
     {
@@ -60,7 +56,7 @@ public static partial class MovieDetector
         if (TitleAndYearRegex().Match(raw) is { Success: true, Groups: { } groups })
         {
             string cleanTitle = groups[1].Value.Trim();
-            string yearStr = !string.IsNullOrEmpty(groups[2].Value) ? groups[2].Value : groups[3].Value;
+            string yearStr = string.IsNullOrEmpty(groups[2].Value) ? groups[3].Value : groups[2].Value;
             if (int.TryParse(yearStr, out int parsedYear))
             {
                 return (cleanTitle, parsedYear);
@@ -69,7 +65,7 @@ public static partial class MovieDetector
         return (raw.Trim(), 0);
     }
 
-    public static async Task<MovieInfo> DetectAsync(string path)
+    public async Task<MovieInfo> DetectAsync(string path, CancellationToken cancellationToken = default)
     {
         string dir = Directory.Exists(path) ? path : (Path.GetDirectoryName(path) ?? ".");
         string nameCandidate = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
@@ -80,12 +76,12 @@ public static partial class MovieDetector
             return nfoInfo;
         }
         // 2. Check offline known 3D animations list
-        if (Known3DAnimations.Contains(title))
+        if (_known3DAnimations.Contains(title))
         {
             return new(title, year, true, $"Matched 3D Animation database ({title})");
         }
         // Partial match against known animation titles
-        foreach (string known in Known3DAnimations)
+        foreach (string known in _known3DAnimations)
         {
             if (title.StartsWith(known, StringComparison.OrdinalIgnoreCase) || known.StartsWith(title, StringComparison.OrdinalIgnoreCase))
             {
@@ -96,10 +92,10 @@ public static partial class MovieDetector
         try
         {
             string queryUrl = $"https://itunes.apple.com/search?term={Uri.EscapeDataString(title)}&entity=movie&limit=3";
-            using HttpResponseMessage response = await _httpClient.GetAsync(queryUrl).ConfigureAwait(false);
+            using HttpResponseMessage response = await httpClient.GetAsync(queryUrl, cancellationToken).ConfigureAwait(false);
             if (response.IsSuccessStatusCode)
             {
-                string jsonString = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                string jsonString = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
                 using JsonDocument doc = JsonDocument.Parse(jsonString);
                 if (doc.RootElement.TryGetProperty("results", out JsonElement results) && results.GetArrayLength() > 0)
                 {
@@ -131,11 +127,7 @@ public static partial class MovieDetector
     {
         try
         {
-            if (!Directory.Exists(directory))
-            {
-                return null;
-            }
-            if (Directory.GetFiles(directory, "*.nfo") is not [{ } xmlFile, ..])
+            if (!Directory.Exists(directory) || Directory.GetFiles(directory, "*.nfo") is not [{ } xmlFile, ..])
             {
                 return null;
             }

@@ -56,10 +56,15 @@ public static class Program
             .PostConfigure(settings => settings.ExpandEnvironmentVariables())
             .ValidateOnStart();
         builder.Services
+            .AddHttpClient<MovieDetector>(client => client.Timeout = TimeSpan.FromSeconds(5));
+        builder.Services
             .AddSingleton<IValidateOptions<AppSettings>, AppSettingsValidator>()
             .AddSingleton(sp => sp.GetRequiredService<IOptions<AppSettings>>().Value)
             .AddSingleton<MainWindowViewModel>()
-            .AddSingleton(sp => new JobRunner(sp.GetRequiredService<AppSettings>(), sp.GetRequiredService<MainWindowViewModel>().Log))
+            .AddSingleton(sp => new JobRunner(
+                sp.GetRequiredService<AppSettings>(),
+                sp.GetRequiredService<MovieDetector>(),
+                sp.GetRequiredService<MainWindowViewModel>().Log))
             .AddSingleton<App>()
             .AddSingleton<MainWindow>()
             .AddSingleton<Func<MainWindow>>(sp => () => sp.GetRequiredService<MainWindow>());

@@ -19,7 +19,6 @@ public abstract class ObservableObject : INotifyPropertyChanged
         {
             return false;
         }
-
         field = value;
         this.OnPropertyChanged(propertyName);
         return true;

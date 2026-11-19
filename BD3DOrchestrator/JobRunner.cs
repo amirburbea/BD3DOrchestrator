@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -12,7 +11,7 @@ namespace BD3DOrchestrator;
 /// Every await here uses ConfigureAwait(false): none of this code touches the UI directly (logging is marshalled by the
 /// supplied logger), so only the window that kicks a job off awaits on the UI context.
 /// </summary>
-public class JobRunner(AppSettings settings, Action<string> logger)
+public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action<string> logger)
 {
     /// <summary>Inspects the input and fills in the job's title, detection result and suggested options.</summary>
     public async Task LoadAsync(Job job, string path, CancellationToken cancellationToken = default)
@@ -21,7 +20,7 @@ public class JobRunner(AppSettings settings, Action<string> logger)
         logger($"Analyzing: {path}...");
         MediaInspector inspector = new(settings.ToolsetDirectory);
         MediaInspectionResult inspection = await inspector.InspectAsync(path, cancellationToken).ConfigureAwait(false);
-        MovieInfo detected = await MovieDetector.DetectAsync(path).ConfigureAwait(false);
+        MovieInfo detected = await movieDetector.DetectAsync(path, cancellationToken).ConfigureAwait(false);
         job.Inspection = inspection;
         string displayName = !string.IsNullOrEmpty(detected.Title) ? detected.Title : inspection.MovieTitle;
         if (detected.Year > 0 && !displayName.Contains(detected.Year.ToString()))
@@ -77,7 +76,6 @@ public class JobRunner(AppSettings settings, Action<string> logger)
         bool convertDts = job.ConvertDtsToEac3;
         bool applyAvsTweak = job.ApplyAvsTweak;
         bool ingestCompanions = job.IngestCompanions;
-        bool killMkvinfoHangs = job.KillMkvinfoHangs;
         EncodeProfile profile;
         try
         {
@@ -96,25 +94,34 @@ public class JobRunner(AppSettings settings, Action<string> logger)
         string jobTempDir = Path.Combine(Path.GetTempPath(), "BD3DOrchestrator", $"Job_{Guid.NewGuid():N}");
         Directory.CreateDirectory(jobTempDir);
         this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse, profile);
+        Process? bd3dProcess = null;
         try
         {
             logger($"[Step 1] Launching BD3D2MK3D for '{titleToUse}' (Sandbox: {Path.GetFileName(jobTempDir)})...");
-            if (Process.Start(startInfo: new(settings.BD3DExecutable) { WorkingDirectory = jobTempDir, UseShellExecute = true }) is not { Id: int pid } bd3dProcess)
+            if (Process.Start(startInfo: new(settings.BD3DExecutable) { WorkingDirectory = jobTempDir, UseShellExecute = true }) is not { Id: int pid } process)
             {
+
                 logger("Failed to start BD3D2MK3D.");
                 return false;
             }
+            bd3dProcess = process;
             logger($"[Step 1] Demuxing streams via BD3D2MK3D (PID: {pid}). Monitoring for completion...");
             while (!bd3dProcess.HasExited && !cancellationToken.IsCancellationRequested)
             {
-                foreach (Process proc in Process.GetProcessesByName("mkvinfo").Where((proc) => DateTime.Now - proc.StartTime > TimeSpan.FromSeconds(10)))
+                foreach (Process proc in Process.GetProcessesByName("mkvinfo"))
                 {
-                    try
+                    using (proc)
                     {
-                        proc.Kill();
-                        logger("⚡ [Watchdog] Terminated hung mkvinfo.exe process to let BD3D2MK3D proceed.");
+                        try
+                        {
+                            if (DateTime.Now - proc.StartTime > TimeSpan.FromSeconds(10))
+                            {
+                                proc.Kill();
+                                logger("⚡ [Watchdog] Terminated hung mkvinfo.exe process to let BD3D2MK3D proceed.");
+                            }
+                        }
+                        catch { }
                     }
-                    catch { }
                 }
                 string resolvedFile = Path.Combine(jobTempDir, "resolved.txt");
                 if (resolvedProject is null && File.Exists(resolvedFile))
@@ -169,6 +176,10 @@ public class JobRunner(AppSettings settings, Action<string> logger)
             }
             catch
             {
+            }
+            finally
+            {
+                bd3dProcess?.Dispose();
             }
         }
         string projectFolder = resolvedProject ?? this.FindProjectMkv3dFolder(titleToUse);

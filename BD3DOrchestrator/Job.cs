@@ -4,7 +4,7 @@ namespace BD3DOrchestrator;
 /// Everything that belongs to one movie: what was loaded, what was detected, and the options the user chose.
 /// Starting the next movie is just <c>viewModel.Job = new()</c>.
 /// </summary>
-public class Job : ObservableObject
+public sealed class Job : ObservableObject
 {
     public string InputPath
     {
@@ -37,12 +37,6 @@ public class Job : ObservableObject
     }
 
     public bool IngestCompanions
-    {
-        get;
-        set => this.SetField(ref field, value);
-    } = true;
-
-    public bool KillMkvinfoHangs
     {
         get;
         set => this.SetField(ref field, value);

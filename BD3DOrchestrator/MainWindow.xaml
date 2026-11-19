@@ -71,9 +71,6 @@
 
                 <CheckBox IsChecked="{Binding Job.IngestCompanions}"
                           Content="Auto-ingest companion audio/subtitles (.mka, .mks, .ec3, .sup) into final MKV"/>
-
-                <CheckBox IsChecked="{Binding Job.KillMkvinfoHangs}"
-                          Content="Watchdog: Kill mkvinfo.exe automatically if it freezes search (> 10 sec)"/>
             </StackPanel>
         </Border>
 

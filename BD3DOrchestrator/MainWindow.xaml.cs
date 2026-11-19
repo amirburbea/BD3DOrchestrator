@@ -15,7 +15,6 @@ public partial class MainWindow : Window
     private readonly AppSettings _settings;
     private readonly JobRunner _runner;
 
-    private CancellationTokenSource? _pipelineCts;
     private int _logLineCount;
     private bool _followTail = true;
     private bool _scrollPending;
@@ -70,7 +69,7 @@ public partial class MainWindow : Window
             int cut = 0;
             for (int removed = 0; removed < LogTrimBatch && cut >= 0; removed++)
             {
-                cut = text.IndexOf('\n', cut) is var newline and >= 0 ? newline + 1 : -1;
+                cut = text.IndexOf('\n', cut) is int newline and >= 0 ? newline + 1 : -1;
             }
             if (cut > 0)
             {
@@ -85,13 +84,13 @@ public partial class MainWindow : Window
             return;
         }
         this._scrollPending = true;
-        if (!this.Dispatcher.CheckAccess())
+        if (this.Dispatcher.CheckAccess())
         {
-            this.Dispatcher.BeginInvoke(new Action(ScrollToEnd), DispatcherPriority.Loaded);
+            ScrollToEnd();
         }
         else
         {
-            ScrollToEnd();
+            this.Dispatcher.BeginInvoke(new Action(ScrollToEnd), DispatcherPriority.Loaded);
         }
 
         void ScrollToEnd()
@@ -107,24 +106,24 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
-    private async void Window_Drop(object sender, DragEventArgs e)
+    private void Window_Drop(object sender, DragEventArgs e)
     {
         if (this._vm.CanExecute && e.Data.GetData(DataFormats.FileDrop) is string[] and [{ } droppedPath, ..])
         {
-            await this.LoadAsync(droppedPath);
+            _ = this.LoadAsync(droppedPath);
         }
     }
 
-    private async void BtnBrowse_Click(object sender, RoutedEventArgs e)
+    private void BtnBrowse_Click(object sender, RoutedEventArgs e)
     {
         OpenFileDialog fileDlg = new()
         {
             Title = "Select 3D MVC MKV File",
             Filter = "MKV Files (*.mkv)|*.mkv|All Files (*.*)|*.*"
         };
-        if (fileDlg.ShowDialog() == true && !string.IsNullOrWhiteSpace(fileDlg.FileName))
+        if (fileDlg.ShowDialog() == true && fileDlg.FileName is { Length: not 0 } fileName)
         {
-            await this.LoadAsync(fileDlg.FileName);
+            _ = this.LoadAsync(fileName);
         }
     }
 
@@ -156,15 +155,11 @@ public partial class MainWindow : Window
         }
         this._vm.IsRunning = true;
         this._vm.ActionButtonText = "⏳ Pipeline Running in Background...";
-        // Only one run at a time (the button is disabled while running), so there is never a previous source to cancel.
-        using CancellationTokenSource cts = new();
-        this._pipelineCts = cts;
-        CancellationToken ct = cts.Token;
         bool succeeded = false;
         try
         {
             // Task.Run keeps the runner's synchronous start-up work off the UI thread too.
-            succeeded = await Task.Run(() => this._runner.RunAsync(job, ct), ct);
+            succeeded = await Task.Run(() => this._runner.RunAsync(job, CancellationToken.None));
         }
         catch (Exception ex)
         {
@@ -172,7 +167,6 @@ public partial class MainWindow : Window
         }
         finally
         {
-            this._pipelineCts = null;
             this._vm.IsRunning = false;
             this._vm.ActionButtonText = "🚀 Auto-Run Pipeline (Demux ➔ Patch AVS ➔ Ingest Audio ➔ Encode & Mux)";
         }

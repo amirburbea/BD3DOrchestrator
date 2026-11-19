@@ -15,13 +15,15 @@ public class EncodeProfile
 {
     private static readonly char[] _sanitizeChars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
 
-    public string OutputNameTemplate { get; private set; } = "{title}.3d.tab.mkv";
-    public string MkvTitleTemplate { get; private set; } = "{title}";
-    public IReadOnlyList<KeyValuePair<string, string>> Settings => this._settings;
+    private readonly List<KeyValuePair<string, string>> _settings = [];
+
     public string Hash { get; private set; } = "";
+    public string MkvTitleTemplate { get; private set; } = "{title}";
+    public string OutputNameTemplate { get; private set; } = "{title}.3d.tab.mkv";
+    public IReadOnlyList<KeyValuePair<string, string>> Settings => this._settings;
     public string SourcePath { get; private set; } = "";
 
-    private readonly List<KeyValuePair<string, string>> _settings = [];
+    public static string ApplyTitle(string template, string title) => template.Replace("{title}", title);
 
     public static EncodeProfile Load(string path)
     {
@@ -63,19 +65,13 @@ public class EncodeProfile
         return profile;
     }
 
-    public static string ApplyTitle(string template, string title) => template.Replace("{title}", title);
-
-    /// <summary>Tcl script lines that force every profile setting (both ::config(...) and the live ::var).</summary>
-    public string ToTclBlock()
+    public static string SanitizeFileName(string name)
     {
-        StringBuilder sb = new();
-        foreach ((string key, string value) in this._settings)
+        foreach (char c in _sanitizeChars)
         {
-            string v = TclQuote(value);
-            sb.Append("set ::config(").Append(key).Append(") ").Append(v).Append('\n');
-            sb.Append("set ::").Append(key).Append(' ').Append(v).Append('\n');
+            name = name.Replace(c.ToString(), "");
         }
-        return sb.ToString();
+        return name.Trim().TrimEnd('.');
     }
 
     public static string TclQuote(string value)
@@ -92,12 +88,18 @@ public class EncodeProfile
         return sb.Append('"').ToString();
     }
 
-    public static string SanitizeFileName(string name)
+    /// <summary>
+    /// Tcl script lines that force every profile setting (both ::config(...) and the live ::var).
+    /// </summary>
+    public string ToTclBlock()
     {
-        foreach (char c in _sanitizeChars)
+        StringBuilder sb = new();
+        foreach ((string key, string value) in this._settings)
         {
-            name = name.Replace(c.ToString(), "");
+            string v = TclQuote(value);
+            sb.Append("set ::config(").Append(key).Append(") ").Append(v).Append('\n');
+            sb.Append("set ::").Append(key).Append(' ').Append(v).Append('\n');
         }
-        return name.Trim().TrimEnd('.');
+        return sb.ToString();
     }
 }

@@ -95,7 +95,7 @@ public partial class MediaInspector(string toolsetPath)
                         {
                             result.HasDtsAudio = true;
                         }
-                        else if (codec.Contains("AC-3", StringComparison.OrdinalIgnoreCase))
+                        else if (codec.Contains("AC-3", StringComparison.OrdinalIgnoreCase) || codec.Contains("TrueHD", StringComparison.OrdinalIgnoreCase))
                         {
                             result.HasDolbyAudio = true;
                         }

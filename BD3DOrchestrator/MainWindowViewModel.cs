@@ -5,7 +5,7 @@ using System.Windows.Threading;
 namespace BD3DOrchestrator;
 
 /// <summary>App-level UI state. Everything about one movie lives on <see cref="Job"/>.</summary>
-public class MainWindowViewModel : ObservableObject
+public sealed class MainWindowViewModel : ObservableObject
 {
     /// <summary>Raised on the UI thread (or the calling thread when there is no UI) with each timestamped log line. The view owns the text.</summary>
     public event Action<string>? LineLogged;
