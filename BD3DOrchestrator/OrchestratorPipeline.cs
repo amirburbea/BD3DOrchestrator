@@ -10,7 +10,7 @@ using System.Threading.Tasks;
 
 namespace BD3DOrchestrator;
 
-public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger logger)
+public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile profile, IMessageLogger logger, IFileSystem fileSystem, IProcessRunner processRunner)
 {
     private static readonly string[] _mux3DOptionsFiles = ["__MUX_3D_OPTIONS.json", "_CUSTOM_MUX_3D_OPTIONS.json"];
 
@@ -40,13 +40,13 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
     /// suffixes) and MKV segment title in the mux option files with the profile's naming template.
     /// The output directory chosen by BD3D2MK3D is preserved.
     /// </summary>
-    public void ApplyOutputNaming(string projectMkv3dDir, string title, EncodeProfile profile)
+    public void ApplyOutputNaming(string projectMkv3dDir, string title)
     {
         string cleanTitle = EncodeProfile.SanitizeFileName(title);
         foreach (string name in _mux3DOptionsFiles)
         {
             string jsonPath = Path.Combine(projectMkv3dDir, name);
-            if (!File.Exists(jsonPath))
+            if (!fileSystem.FileExists(jsonPath))
             {
                 continue;
             }
@@ -54,7 +54,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
             {
                 JsonDocumentOptions options = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
                 List<string> args = [];
-                using (JsonDocument doc = JsonDocument.Parse(File.ReadAllText(jsonPath), options))
+                using (JsonDocument doc = JsonDocument.Parse(fileSystem.ReadAllText(jsonPath), options))
                 {
                     args.AddRange(doc.RootElement.EnumerateArray().Select(element => element.GetString() ?? ""));
                 }
@@ -80,7 +80,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
                             break;
                     }
                 }
-                File.WriteAllText(jsonPath, JsonSerializer.Serialize(args, _writeOptions));
+                fileSystem.WriteAllText(jsonPath, JsonSerializer.Serialize(args, _writeOptions));
             }
             catch (Exception ex)
             {
@@ -98,11 +98,11 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
         logger.Log($"[Audio] Checking audio streams for {Path.GetFileName(inputMkv)}...");
         string probeArgs = $"-v error -select_streams a:0 -show_entries stream=codec_name,profile,channels -of csv=p=0 \"{inputMkv}\"";
         string ffprobeExe = Path.Combine(Path.GetDirectoryName(settings.FfmpegExecutable) ?? "", "ffprobe.exe");
-        if (!File.Exists(ffprobeExe))
+        if (!fileSystem.FileExists(ffprobeExe))
         {
             ffprobeExe = "ffprobe.exe";
         }
-        (int probeCode, string probeData, _) = await ProcessRunner.RunAsync(ffprobeExe, probeArgs, cancellationToken: cancellationToken).ConfigureAwait(false);
+        (int probeCode, string probeData, _) = await processRunner.RunAsync(ffprobeExe, probeArgs, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (probeCode != 0 || string.IsNullOrWhiteSpace(probeData))
         {
             logger.Log("[Audio] Warning: Could not ffprobe audio streams, falling back to 5.1 EAC3 direct copy/downmix.");
@@ -130,7 +130,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
             audioArgs.AddRange(["-c:a", "eac3", "-b:a", "640k", "-ac", "6"]);
         }
         string ffmpegArgs = $"-y -i \"{inputMkv}\" -map 0:a:0 {string.Join(" ", audioArgs)} \"{outputEac3Path}\"";
-        (int exitCode, _, string stderr) = await ProcessRunner.RunAsync(
+        (int exitCode, _, string stderr) = await processRunner.RunAsync(
             settings.FfmpegExecutable,
             ffmpegArgs,
             onStderr: line =>
@@ -142,7 +142,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
             },
             cancellationToken: cancellationToken
         ).ConfigureAwait(false);
-        if (exitCode == 0 && File.Exists(outputEac3Path))
+        if (exitCode == 0 && fileSystem.FileExists(outputEac3Path))
         {
             logger.Log($"[Audio] Successfully converted to EAC3: {Path.GetFileName(outputEac3Path)}");
             return outputEac3Path;
@@ -159,7 +159,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
     public string? FindDemuxedDtsFile(string projectMkv3dDir)
     {
         string jsonPath = Path.Combine(projectMkv3dDir, "__MUX_3D_OPTIONS.json");
-        if (File.Exists(jsonPath))
+        if (fileSystem.FileExists(jsonPath))
         {
             try
             {
@@ -168,7 +168,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
                     CommentHandling = JsonCommentHandling.Skip,
                     AllowTrailingCommas = true
                 };
-                using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(jsonPath), options);
+                using JsonDocument doc = JsonDocument.Parse(fileSystem.ReadAllText(jsonPath), options);
                 foreach (JsonElement element in doc.RootElement.EnumerateArray())
                 {
                     string arg = element.GetString() ?? "";
@@ -176,7 +176,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
                         arg.EndsWith(".dtshd", StringComparison.OrdinalIgnoreCase))
                     {
                         string candidate = Path.Combine(projectMkv3dDir, arg);
-                        if (File.Exists(candidate))
+                        if (fileSystem.FileExists(candidate))
                         {
                             logger.Log($"[Audio] __MUX_3D_OPTIONS.json references demuxed DTS: {arg}");
                             return candidate;
@@ -191,9 +191,9 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
             }
         }
         // Local-only fallback (element.g. JSON already patched by a previous run)
-        string? scanned = Directory.GetFiles(projectMkv3dDir, "*.*")
+        string? scanned = fileSystem.GetFiles(projectMkv3dDir)
             .Where(f => f.EndsWith(".dts", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".dtshd", StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(f => new FileInfo(f).Length)
+            .OrderByDescending(fileSystem.GetFileLength)
             .FirstOrDefault();
         if (scanned != null)
         {
@@ -205,12 +205,12 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
     public bool InjectAvsTweak(string projectMkv3dDir)
     {
         string avsFile = Path.Combine(projectMkv3dDir, "__ENCODE_3D_MOVIE.avs");
-        if (!File.Exists(avsFile))
+        if (!fileSystem.FileExists(avsFile))
         {
             logger.Log($"[AVS Patch] File not found: {avsFile}");
             return false;
         }
-        string content = File.ReadAllText(avsFile);
+        string content = fileSystem.ReadAllText(avsFile);
         string tweakLine = "Tweak(sat=1.1, cont=1.05)";
         if (content.Contains(tweakLine))
         {
@@ -218,10 +218,10 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
             return true;
         }
         string backupFile = avsFile + ".bak";
-        File.Copy(avsFile, backupFile, overwrite: true);
+        fileSystem.CopyFile(avsFile, backupFile, overwrite: true);
         logger.Log($"[AVS Patch] Created backup at {Path.GetFileName(backupFile)}");
         string newContent = AvsEndRegex().Replace(content, $"{tweakLine}\r\nReturn(last)");
-        File.WriteAllText(avsFile, newContent);
+        fileSystem.WriteAllText(avsFile, newContent);
         logger.Log($"[AVS Patch] Injected '{tweakLine}' right before Return(last)!");
         return true;
     }
@@ -231,13 +231,13 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
         foreach (string name in _postProcessFiles)
         {
             string targetFile = Path.Combine(projectMkv3dDir, name);
-            if (!File.Exists(targetFile))
+            if (!fileSystem.FileExists(targetFile))
             {
                 continue;
             }
             // BD3D puts "start "" ." and "pause" at the end of post-process scripts which pops
             // Explorer and blocks exit!
-            File.WriteAllText(targetFile, "@echo off\r\nREM Neutralized Explorer popup and pause\r\nexit /B 0\r\n");
+            fileSystem.WriteAllText(targetFile, "@echo off\r\nREM Neutralized Explorer popup and pause\r\nexit /B 0\r\n");
             logger.Log($"[PostProcess] Neutralized {Path.GetFileName(targetFile)} (disabled 'pause' and Explorer popups).");
         }
     }
@@ -248,7 +248,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
         foreach (string targetName in _mux3DOptionsFiles)
         {
             string jsonPath = Path.Combine(projectMkv3dDir, targetName);
-            if (!File.Exists(jsonPath))
+            if (!fileSystem.FileExists(jsonPath))
             {
                 continue;
             }
@@ -267,7 +267,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
     {
         try
         {
-            string rawJson = File.ReadAllText(jsonPath);
+            string rawJson = fileSystem.ReadAllText(jsonPath);
             JsonDocumentOptions options = new()
             {
                 CommentHandling = JsonCommentHandling.Skip,
@@ -276,7 +276,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
             using JsonDocument doc = JsonDocument.Parse(rawJson, options);
             List<string> arguments = [.. doc.RootElement.EnumerateArray().Select(element => element.GetString() ?? "")];
             // If we converted DTS to custom EAC3, strip original DTS/DTS-HD audio tracks from arguments
-            if (!string.IsNullOrEmpty(customEac3File) && File.Exists(customEac3File))
+            if (!string.IsNullOrEmpty(customEac3File) && fileSystem.FileExists(customEac3File))
             {
                 while (true)
                 {
@@ -322,12 +322,12 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
                 }
             }
             // If we converted DTS to custom EAC3, inject it
-            if (!string.IsNullOrEmpty(customEac3File) && File.Exists(customEac3File))
+            if (!string.IsNullOrEmpty(customEac3File) && fileSystem.FileExists(customEac3File))
             {
                 string destEac3 = Path.Combine(projectMkv3dDir, Path.GetFileName(customEac3File));
                 if (!destEac3.Equals(customEac3File, StringComparison.OrdinalIgnoreCase))
                 {
-                    File.Copy(customEac3File, destEac3, overwrite: true);
+                    fileSystem.CopyFile(customEac3File, destEac3, overwrite: true);
                 }
                 logger.Log($"[Mux Options] Injecting converted EAC3 audio: {Path.GetFileName(destEac3)}");
                 arguments.Add("--track-name");
@@ -344,7 +344,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
             if (!hasAudioTrack)
             {
                 List<string> audioCandidates = [];
-                foreach (string f in Directory.GetFiles(projectMkv3dDir, "*.*"))
+                foreach (string f in fileSystem.GetFiles(projectMkv3dDir))
                 {
                     if (f.EndsWith(".ec3", StringComparison.OrdinalIgnoreCase) ||
                         f.EndsWith(".ac3", StringComparison.OrdinalIgnoreCase) ||
@@ -371,7 +371,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
             // Ingest all matching companion files (.ec3, .mka, .mks, .sup, .srt, .ass)
             foreach (string companion in companionFiles)
             {
-                if (!File.Exists(companion))
+                if (!fileSystem.FileExists(companion))
                 {
                     continue;
                 }
@@ -379,7 +379,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
                 string destCompanion = Path.Combine(projectMkv3dDir, Path.GetFileName(companion));
                 if (!destCompanion.Equals(companion, StringComparison.OrdinalIgnoreCase))
                 {
-                    File.Copy(companion, destCompanion, overwrite: true);
+                    fileSystem.CopyFile(companion, destCompanion, overwrite: true);
                 }
                 logger.Log($"[Mux Options] Ingesting companion file into mux: {Path.GetFileName(destCompanion)}");
                 if (ext is ".ec3" or ".ac3" or ".mka")
@@ -424,7 +424,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger l
                 }
             }
             string outputJson = JsonSerializer.Serialize(arguments, _writeOptions);
-            File.WriteAllText(jsonPath, outputJson);
+            fileSystem.WriteAllText(jsonPath, outputJson);
             logger.Log($"[Mux Options] Successfully updated {Path.GetFileName(jsonPath)} with audio and companion tracks!");
             return true;
         }

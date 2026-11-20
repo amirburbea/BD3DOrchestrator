@@ -22,7 +22,7 @@ public partial class MainWindow : Window
     private const int MaxLogLines = 5000;
     private const int LogTrimBatch = 500;
 
-    public MainWindow(MainWindowViewModel vm, JobRunner runner, AppSettings settings)
+    public MainWindow(MainWindowViewModel vm, IMessageLogger messageLogger, JobRunner runner, AppSettings settings)
     {
         this._vm = vm;
         this._runner = runner;
@@ -31,8 +31,8 @@ public partial class MainWindow : Window
         this.DataContext = vm;
         // TextBox has no ScrollChanged event of its own; it bubbles up from its internal ScrollViewer.
         this.TxtLog.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(this.TxtLog_ScrollChanged));
-        vm.MessageLogged += this.AppendLog;
-        JobRunner.CleanupStaleTempDirectories();
+        messageLogger.MessageLogged += this.AppendLog;
+        this._runner.CleanupStaleTempDirectories();
         this.AppendLog($"[Settings] Toolset: {this._settings.ToolsetDirectory}");
         this.AppendLog($"[Settings] BD3D: {this._settings.BD3DExecutable}");
         this.AppendLog($"[Settings] FFmpeg: {this._settings.FfmpegExecutable}");

@@ -1,12 +1,8 @@
-using System;
-
 namespace BD3DOrchestrator;
 
 /// <summary>App-level UI state. Everything about one movie lives on <see cref="Job"/>.</summary>
-public sealed class MainWindowViewModel : ObservableObject, IMessageLogger
+public sealed class MainWindowViewModel : ObservableObject
 {
-    public event Action<string>? MessageLogged;
-
     public Job Job
     {
         get;
@@ -24,6 +20,4 @@ public sealed class MainWindowViewModel : ObservableObject, IMessageLogger
         get;
         set => this.SetField(ref field, value);
     } = "🚀 Auto-Run Pipeline (Demux ➔ Patch AVS ➔ Ingest Audio ➔ Encode & Mux)";
-
-    public void Log(string message) => this.MessageLogged?.Invoke(message);
 }

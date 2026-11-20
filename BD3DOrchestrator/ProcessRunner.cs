@@ -6,9 +6,24 @@ using System.Threading.Tasks;
 
 namespace BD3DOrchestrator;
 
-public static class ProcessRunner
+/// <summary>
+/// Abstraction for running external CLI tools (mkvmerge, ffprobe, ffmpeg).
+/// </summary>
+public interface IProcessRunner
 {
-    public static async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
+    Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
+        string executable,
+        string arguments,
+        string? workingDir = null,
+        Action<string>? onStdout = null,
+        Action<string>? onStderr = null,
+        CancellationToken cancellationToken = default
+    );
+}
+
+public sealed class ProcessRunner : IProcessRunner
+{
+    public async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
         string executable,
         string arguments,
         string? workingDir = null,

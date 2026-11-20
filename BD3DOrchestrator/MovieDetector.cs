@@ -10,7 +10,7 @@ namespace BD3DOrchestrator;
 
 public record MovieInfo(string Title, int Year, bool IsAnimation, string Reason);
 
-public partial class MovieDetector(HttpClient httpClient, AppSettings settings)
+public partial class MovieDetector(HttpClient httpClient, AppSettings settings, IFileSystem fileSystem)
 {
     /// <summary>TMDb's genre id for Animation.</summary>
     private const int TmdbAnimationGenreId = 16;
@@ -32,11 +32,11 @@ public partial class MovieDetector(HttpClient httpClient, AppSettings settings)
 
     public async Task<MovieInfo> DetectAsync(string path, CancellationToken cancellationToken = default)
     {
-        string dir = Directory.Exists(path) ? path : (Path.GetDirectoryName(path) ?? ".");
+        string dir = fileSystem.DirectoryExists(path) ? path : (Path.GetDirectoryName(path) ?? ".");
         string nameCandidate = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         (string title, int year) = ParseTitleAndYear(nameCandidate);
         // 1. A local .nfo is authoritative (title, year and genre).
-        if (TryReadNfo(dir) is { } nfoInfo)
+        if (this.TryReadNfo(dir) is { } nfoInfo)
         {
             return nfoInfo;
         }
@@ -115,15 +115,15 @@ public partial class MovieDetector(HttpClient httpClient, AppSettings settings)
         }
     }
 
-    private static MovieInfo? TryReadNfo(string directory)
+    private MovieInfo? TryReadNfo(string directory)
     {
         try
         {
-            if (!Directory.Exists(directory) || Directory.GetFiles(directory, "*.nfo") is not [{ } xmlFile, ..])
+            if (!fileSystem.DirectoryExists(directory) || fileSystem.GetFiles(directory, "*.nfo") is not [{ } xmlFile, ..])
             {
                 return null;
             }
-            string xml = File.ReadAllText(xmlFile);
+            string xml = fileSystem.ReadAllText(xmlFile);
             Match genreMatch = GenreRegex().Match(xml);
             Match yearMatch = YearRegex().Match(xml);
             Match titleMatch = TitleRegex().Match(xml);

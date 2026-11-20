@@ -20,6 +20,7 @@ public static class Program
         {
             host = BuildHost(args);
             host.Start(); // runs the options validation (ValidateOnStart); there are no hosted services
+            host.Services.GetRequiredService<IEncodeProfile>(); // fail fast if profile.json is invalid
         }
         catch (Exception ex)
         {
@@ -37,7 +38,7 @@ public static class Program
     private static IHost BuildHost(string[] args)
     {
         // Content root = the exe folder, so config files are found no matter where the app is launched from.
-        HostApplicationBuilder builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder(settings: new()
         {
             Args = args,
             ContentRootPath = AppContext.BaseDirectory
@@ -65,10 +66,15 @@ public static class Program
             .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
             .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
         builder.Services
+            .AddSingleton(TimeProvider.System)
+            .AddSingleton<IFileSystem, PhysicalFileSystem>()
+            .AddSingleton<IProcessRunner, ProcessRunner>()
+            .AddSingleton<IProcessManager, ProcessManager>()
             .AddSingleton<IValidateOptions<AppSettings>, AppSettingsValidator>()
             .AddSingleton(sp => sp.GetRequiredService<IOptions<AppSettings>>().Value)
+            .AddSingleton<IEncodeProfile, EncodeProfile>()
             .AddSingleton<MainWindowViewModel>()
-            .AddSingleton<IMessageLogger>(sp => sp.GetRequiredService<MainWindowViewModel>())
+            .AddSingleton<IMessageLogger, MessageLogger>()
             .AddSingleton<MediaInspector>()
             .AddSingleton<OrchestratorPipeline>()
             .AddSingleton<JobRunner>()

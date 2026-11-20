@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -11,7 +10,16 @@ namespace BD3DOrchestrator;
 /// Every await here uses ConfigureAwait(false): none of this code touches the UI directly (logging is marshalled by the
 /// supplied logger), so only the window that kicks a job off awaits on the UI context.
 /// </summary>
-public class JobRunner(AppSettings settings, MediaInspector mediaInspector, MovieDetector movieDetector, OrchestratorPipeline pipeline, IMessageLogger logger)
+public sealed class JobRunner(
+    AppSettings settings,
+    IEncodeProfile profile,
+    MediaInspector mediaInspector,
+    MovieDetector movieDetector,
+    OrchestratorPipeline pipeline,
+    IFileSystem fileSystem,
+    IMessageLogger logger,
+    IProcessManager processManager,
+    TimeProvider timeProvider)
 {
     /// <summary>Inspects the input and fills in the job's title, detection result and suggested options.</summary>
     public async Task LoadAsync(Job job, string path, CancellationToken cancellationToken = default)
@@ -75,84 +83,73 @@ public class JobRunner(AppSettings settings, MediaInspector mediaInspector, Movi
         bool convertDts = job.ConvertDtsToEac3;
         bool applyAvsTweak = job.ApplyAvsTweak;
         bool ingestCompanions = job.IngestCompanions;
-        EncodeProfile profile;
-        try
-        {
-            string profilePath = settings.ResolvedProfilePath;
-            profile = EncodeProfile.Load(profilePath);
-            logger.Log($"[Profile] {profilePath} (hash {profile.Hash}, {profile.Settings.Count} settings) -> output '{profile.OutputNameTemplate}'");
-        }
-        catch (Exception ex)
-        {
-            logger.Log($"[Error] Cannot load encoding profile, aborting before anything runs: {ex.Message}");
-            return false;
-        }
+        logger.Log($"[Profile] {profile.SourcePath} (hash {profile.Hash}, {profile.Settings.Count} settings) -> output '{profile.OutputNameTemplate}'");
         string? resolvedProject = null;
         // DataHandler an isolated temp job sandbox so BD3D2MK3D's original install folder is never touched or modified.
         // This guarantees complete isolation between multiple parallel instances or manual runs.
         string jobTempDir = Path.Combine(Path.GetTempPath(), "BD3DOrchestrator", $"Job_{Guid.NewGuid():N}");
-        Directory.CreateDirectory(jobTempDir);
-        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse, profile);
-        Process? bd3dProcess = null;
+        fileSystem.CreateDirectory(jobTempDir);
+        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse);
+        ProcessHandle? bd3dProcess = null;
         try
         {
             logger.Log($"[Step 1] Launching BD3D2MK3D for '{titleToUse}' (Sandbox: {Path.GetFileName(jobTempDir)})...");
-            if (Process.Start(startInfo: new(settings.BD3DExecutable) { WorkingDirectory = jobTempDir, UseShellExecute = true }) is not { Id: int pid } process)
+            if (processManager.StartShell(settings.BD3DExecutable, jobTempDir) is not { } process)
             {
-
                 logger.Log("Failed to start BD3D2MK3D.");
                 return false;
             }
             bd3dProcess = process;
-            logger.Log($"[Step 1] Demuxing streams via BD3D2MK3D (PID: {pid}). Monitoring for completion...");
-            while (!bd3dProcess.HasExited && !cancellationToken.IsCancellationRequested)
+            logger.Log($"[Step 1] Demuxing streams via BD3D2MK3D (PID: {process.Id}). Monitoring for completion...");
+            using PeriodicTimer timer = new(TimeSpan.FromSeconds(2), timeProvider);
+            while (!process.HasExited && !cancellationToken.IsCancellationRequested)
             {
-                foreach (Process proc in Process.GetProcessesByName("mkvinfo"))
-                {
-                    using (proc)
-                    {
-                        try
-                        {
-                            if (DateTime.Now - proc.StartTime > TimeSpan.FromSeconds(10))
-                            {
-                                proc.Kill();
-                                logger.Log("⚡ [Watchdog] Terminated hung mkvinfo.exe process to let BD3D2MK3D proceed.");
-                            }
-                        }
-                        catch { }
-                    }
-                }
-                string resolvedFile = Path.Combine(jobTempDir, "resolved.txt");
-                if (resolvedProject is null && File.Exists(resolvedFile))
+                foreach (ProcessHandle processHandle in processManager.GetProcessesByName("mkvinfo"))
                 {
                     try
                     {
-                        resolvedProject = File.ReadAllText(resolvedFile).Trim();
+                        if (timeProvider.GetLocalNow().DateTime - processHandle.StartTime > TimeSpan.FromSeconds(10))
+                        {
+                            processHandle.Kill();
+                            logger.Log("⚡ [Watchdog] Terminated hung mkvinfo.exe process to let BD3D2MK3D proceed.");
+                        }
                     }
-                    catch { }
+                    catch { /* Ignore */ }
+                    finally
+                    {
+                        processHandle.Dispose();
+                    }
+                }
+                string resolvedFile = Path.Combine(jobTempDir, "resolved.txt");
+                if (resolvedProject is null && fileSystem.FileExists(resolvedFile))
+                {
+                    try
+                    {
+                        resolvedProject = fileSystem.ReadAllText(resolvedFile).Trim();
+                    }
+                    catch { /* Ignore */ }
                 }
                 // Check if BD3D finished generating the project files
-                string projFolder = resolvedProject ?? this.FindProjectMkv3dFolder(titleToUse);
-                if (!string.IsNullOrEmpty(projFolder))
+                if ((resolvedProject ?? this.FindProjectMkv3dFolder(titleToUse)) is { Length: > 0 } projFolder)
                 {
                     string logFile = Path.Combine(projFolder, "BD3D2MK3D.log");
-                    if (File.Exists(logFile))
+                    if (fileSystem.FileExists(logFile))
                     {
                         try
                         {
-                            string logText = File.ReadAllText(logFile);
+                            string logText = fileSystem.ReadAllText(logFile);
                             if (logText.Contains("Successfully done", StringComparison.OrdinalIgnoreCase))
                             {
                                 logger.Log("[Step 1] BD3D2MK3D demux & project generation completed successfully!");
                                 try
                                 {
-                                    if (!bd3dProcess.HasExited)
+                                    if (!process.HasExited)
                                     {
-                                        bd3dProcess.Kill();
-                                        logger.Log($"[Step 1] Cleanly terminated own BD3D2MK3D instance (PID: {pid}).");
+                                        process.Kill();
+                                        logger.Log($"[Step 1] Cleanly terminated own BD3D2MK3D instance (PID: {process.Id}).");
                                     }
                                 }
-                                catch { }
+                                catch { /* Ignore */ }
                                 break;
                             }
                         }
@@ -161,28 +158,42 @@ public class JobRunner(AppSettings settings, MediaInspector mediaInspector, Movi
                         }
                     }
                 }
-                await Task.Delay(2000, cancellationToken).ConfigureAwait(false);
+                if (process.HasExited || !await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+                {
+                    break;
+                }
             }
         }
         finally
         {
+            if (bd3dProcess is { } process)
+            {
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        process.Kill();
+                    }
+                }
+                catch { /* Ignore */ }
+                finally
+                {
+                    process.Dispose();
+                }
+            }
             try
             {
-                if (Directory.Exists(jobTempDir))
+                if (fileSystem.DirectoryExists(jobTempDir))
                 {
-                    Directory.Delete(jobTempDir, recursive: true);
+                    fileSystem.DeleteDirectory(jobTempDir, recursive: true);
                 }
             }
             catch
             {
             }
-            finally
-            {
-                bd3dProcess?.Dispose();
-            }
         }
         string projectFolder = resolvedProject ?? this.FindProjectMkv3dFolder(titleToUse);
-        if (string.IsNullOrEmpty(projectFolder) || !Directory.Exists(projectFolder))
+        if (string.IsNullOrEmpty(projectFolder) || !fileSystem.DirectoryExists(projectFolder))
         {
             logger.Log($"[Error] Could not find generated project folder for '{titleToUse}'. Aborting pipeline.");
             return false;
@@ -202,12 +213,12 @@ public class JobRunner(AppSettings settings, MediaInspector mediaInspector, Movi
                 customEac3 = await pipeline.ConvertAudioToEac3Async(localDts, outEac3, cancellationToken).ConfigureAwait(false);
             }
         }
-        pipeline.ApplyOutputNaming(projectFolder, titleToUse, profile);
+        pipeline.ApplyOutputNaming(projectFolder, titleToUse);
         try
         {
-            File.WriteAllText(Path.Combine(projectFolder, "encode_profile.txt"), $"hash={profile.Hash}{Environment.NewLine}source={profile.SourcePath}{Environment.NewLine}");
+            fileSystem.WriteAllText(Path.Combine(projectFolder, "encode_profile.txt"), $"hash={profile.Hash}{Environment.NewLine}source={profile.SourcePath}{Environment.NewLine}");
         }
-        catch { }
+        catch { /* Ignore */ }
         // AVS Script OLED contrast/saturation injection
         if (applyAvsTweak)
         {
@@ -223,21 +234,20 @@ public class JobRunner(AppSettings settings, MediaInspector mediaInspector, Movi
         // 3. Start Encoding & Muxing
         logger.Log("[Step 3] Launching background x264/x265 encode and final MKV mux...");
         string launcherCmd = Path.Combine(projectFolder, "__ENCODE_3D_LAUNCHER.cmd");
-        if (!File.Exists(launcherCmd))
+        if (!fileSystem.FileExists(launcherCmd))
         {
             launcherCmd = Path.Combine(projectFolder, "__ENCODE_3D.cmd");
         }
-        if (File.Exists(launcherCmd))
+        if (fileSystem.FileExists(launcherCmd))
         {
-            ProcessStartInfo encodePsi = new()
+            if (processManager.StartShell(launcherCmd, projectFolder) is { } encodeProcess)
             {
-                FileName = launcherCmd,
-                WorkingDirectory = projectFolder,
-                UseShellExecute = true
-            };
-            Process.Start(encodePsi);
-            logger.Log("🎉 Pipeline complete! Encode is running in low CPU priority background window.");
-            return true;
+                encodeProcess.Dispose();
+                logger.Log("🎉 Pipeline complete! Encode is running in low CPU priority background window.");
+                return true;
+            }
+            logger.Log($"[Error] Failed to launch {Path.GetFileName(launcherCmd)}.");
+            return false;
         }
         else
         {
@@ -246,7 +256,7 @@ public class JobRunner(AppSettings settings, MediaInspector mediaInspector, Movi
         }
     }
 
-    private void CreatePluginTclHook(string jobTempDir, string mkvPath, string movieTitle, EncodeProfile profile)
+    private void CreatePluginTclHook(string jobTempDir, string mkvPath, string movieTitle)
     {
         try
         {
@@ -257,13 +267,13 @@ public class JobRunner(AppSettings settings, MediaInspector mediaInspector, Movi
             string escapedTitle = movieTitle.Replace("\"", "\\\"").Replace("[", "\\[").Replace("]", "\\]");
             string hook = $@"
 # BD3DOrchestrator Auto-Run Plugin Hook
-proc ::GetMkvWritingApplication {{mkvfile}} {{
+processHandle ::GetMkvWritingApplication {{mkvfile}} {{
     return ""MakeMKV v1.17.8 win(x64-release)""
 }}
 
 if {{[info commands ::orig_tk_messageBox] == """" && [info commands ::tk_messageBox] != """" && [info commands ::orig_tk_messageBox] != ""::tk_messageBox""}} {{
     rename ::tk_messageBox ::orig_tk_messageBox
-    proc ::tk_messageBox {{args}} {{
+    processHandle ::tk_messageBox {{args}} {{
         set str [string tolower [join $args "" ""]]
         if {{[string first ""retrycancel"" $str] != -1}} {{
             return ""cancel""
@@ -283,7 +293,7 @@ if {{[info commands ::orig_tk_messageBox] == """" && [info commands ::tk_message
 
 if {{[info commands ::orig_exec] == """" && [info commands ::exec] != """" && [info commands ::orig_exec] != ""::exec""}} {{
     rename ::exec ::orig_exec
-    proc ::exec {{args}} {{
+    processHandle ::exec {{args}} {{
         set str [join $args "" ""]
         if {{[string first ""cmd /c start"" $str] != -1}} {{
             return """"
@@ -296,7 +306,7 @@ set ::config(endaction) ""close command prompt""
 set ::endaction ""close command prompt""
 
 # --- Shared encoding profile (hash {profile.Hash}) ---
-{profile.ToTclBlock()}
+{profile.TclBlock}
 # --- Per-machine paths ---
 set ::projdir {projQ}
 catch {{file mkdir $::projdir}}
@@ -331,7 +341,7 @@ after 150 {{
 }}
 ";
             string targetPath = Path.Combine(jobTempDir, "plugin.tcl");
-            File.WriteAllText(targetPath, hook);
+            fileSystem.WriteAllText(targetPath, hook);
             logger.Log($"Created isolated sandbox hook: Auto-opens '{Path.GetFileName(mkvPath)}', sets Title = '{movieTitle}', suppresses prompts & Explorer popup.");
         }
         catch (Exception ex)
@@ -340,22 +350,21 @@ after 150 {{
         }
     }
 
-    public static void CleanupStaleTempDirectories()
+    public void CleanupStaleTempDirectories()
     {
         try
         {
             string baseTemp = Path.Combine(Path.GetTempPath(), "BD3DOrchestrator");
-            if (Directory.Exists(baseTemp))
+            if (fileSystem.DirectoryExists(baseTemp))
             {
-                DirectoryInfo dirInfo = new(baseTemp);
-                foreach (DirectoryInfo subDir in dirInfo.GetDirectories())
+                foreach (string subDir in fileSystem.GetDirectories(baseTemp))
                 {
                     // Clean up any stale temp directories older than 12 hours (e.g. from previous crashes)
-                    if (DateTime.Now - subDir.CreationTime > TimeSpan.FromHours(12))
+                    if (timeProvider.GetLocalNow().DateTime - fileSystem.GetDirectoryCreationTime(subDir) > TimeSpan.FromHours(12))
                     {
                         try
                         {
-                            subDir.Delete(recursive: true);
+                            fileSystem.DeleteDirectory(subDir, recursive: true);
                         }
                         catch
                         {
@@ -380,7 +389,7 @@ after 150 {{
                 continue;
             }
             string candidate = Path.Combine(settings.ProjectDirectory, name, "MKV3D");
-            if (Directory.Exists(candidate))
+            if (fileSystem.DirectoryExists(candidate))
             {
                 return candidate;
             }

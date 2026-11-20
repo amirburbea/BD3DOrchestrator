@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace BD3DOrchestrator;
 
-public partial class MediaInspector(AppSettings settings)
+public partial class MediaInspector(AppSettings settings, IFileSystem fileSystem, IProcessRunner processRunner)
 {
     private readonly string _mkvmergePath = Path.Combine(settings.ToolsetDirectory, "mkvmerge.exe");
 
@@ -16,16 +16,16 @@ public partial class MediaInspector(AppSettings settings)
     {
         string targetMkv = "";
         string folder = "";
-        if (Directory.Exists(inputPath))
+        if (fileSystem.DirectoryExists(inputPath))
         {
             folder = inputPath;
-            string[] mkvs = Directory.GetFiles(folder, "*.3d.mvc.mkv") is { Length: > 0 } mvcFiles ? mvcFiles : Directory.GetFiles(folder, "*.mkv");
+            string[] mkvs = fileSystem.GetFiles(folder, "*.3d.mvc.mkv") is { Length: > 0 } mvcFiles ? mvcFiles : fileSystem.GetFiles(folder, "*.mkv");
             if (mkvs is [{ } first, ..])
             {
                 targetMkv = first;
             }
         }
-        else if (File.Exists(inputPath))
+        else if (fileSystem.FileExists(inputPath))
         {
             targetMkv = inputPath;
             folder = Path.GetDirectoryName(inputPath) ?? "";
@@ -39,38 +39,38 @@ public partial class MediaInspector(AppSettings settings)
             MovieTitle = title
         };
         // Search for companion mvcFiles matching "Title*.(mka|mks|ec3|sup)"
-        if (Directory.Exists(folder) && !string.IsNullOrEmpty(title))
+        if (fileSystem.DirectoryExists(folder) && !string.IsNullOrEmpty(title))
         {
             HashSet<string> companionSet = [with(StringComparer.OrdinalIgnoreCase)];
             // 1. Current directory
-            FindCompanionFiles(folder, title, targetMkv, companionSet);
+            this.FindCompanionFiles(folder, title, targetMkv, companionSet);
             // 2. Parent directory (e.g. root SMB share when MKV is in a subfolder)
-            if (Directory.GetParent(folder) is { Exists: true } parentDir)
+            if (fileSystem.GetParentDirectory(folder) is { } parentDir && fileSystem.DirectoryExists(parentDir))
             {
-                FindCompanionFiles(parentDir.FullName, title, targetMkv, companionSet);
+                this.FindCompanionFiles(parentDir, title, targetMkv, companionSet);
             }
             // 3. Title-named subdirectories (e.g. when MKV is in root but companion is in subfolder)
             string sub1 = Path.Combine(folder, title);
-            if (Directory.Exists(sub1))
+            if (fileSystem.DirectoryExists(sub1))
             {
-                FindCompanionFiles(sub1, title, targetMkv, companionSet);
+                this.FindCompanionFiles(sub1, title, targetMkv, companionSet);
             }
             if (year > 0)
             {
                 string sub2 = Path.Combine(folder, $"{title} ({year})");
-                if (Directory.Exists(sub2))
+                if (fileSystem.DirectoryExists(sub2))
                 {
-                    FindCompanionFiles(sub2, title, targetMkv, companionSet);
+                    this.FindCompanionFiles(sub2, title, targetMkv, companionSet);
                 }
             }
             result.CompanionFiles.AddRange(companionSet);
         }
-        if (!File.Exists(targetMkv) || !File.Exists(this._mkvmergePath))
+        if (!fileSystem.FileExists(targetMkv) || !fileSystem.FileExists(this._mkvmergePath))
         {
             return result;
         }
         // Run mkvmerge -J to inspect tracks accurately without hanging
-        (int exitCode, string stdout, _) = await ProcessRunner.RunAsync(
+        (int exitCode, string stdout, _) = await processRunner.RunAsync(
             this._mkvmergePath,
             $"-J \"{targetMkv}\"",
             workingDir: folder,
@@ -110,15 +110,15 @@ public partial class MediaInspector(AppSettings settings)
         return result;
     }
 
-    private static void FindCompanionFiles(string directory, string title, string targetMkv, ICollection<string> foundFiles)
+    private void FindCompanionFiles(string directory, string title, string targetMkv, ICollection<string> foundFiles)
     {
-        if (!Directory.Exists(directory) || string.IsNullOrEmpty(title))
+        if (!fileSystem.DirectoryExists(directory) || string.IsNullOrEmpty(title))
         {
             return;
         }
         try
         {
-            foreach (string file in Directory.GetFiles(directory, $"{title}*"))
+            foreach (string file in fileSystem.GetFiles(directory, $"{title}*"))
             {
                 if (!file.Equals(targetMkv, StringComparison.OrdinalIgnoreCase) && CompanionFilesRegex().IsMatch(file))
                 {
