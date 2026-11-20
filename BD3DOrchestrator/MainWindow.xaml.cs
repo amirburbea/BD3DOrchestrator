@@ -31,14 +31,14 @@ public partial class MainWindow : Window
         this.DataContext = vm;
         // TextBox has no ScrollChanged event of its own; it bubbles up from its internal ScrollViewer.
         this.TxtLog.AddHandler(ScrollViewer.ScrollChangedEvent, new ScrollChangedEventHandler(this.TxtLog_ScrollChanged));
-        vm.LineLogged += this.AppendLog;
+        vm.MessageLogged += this.AppendLog;
         JobRunner.CleanupStaleTempDirectories();
-        this._vm.Log($"[Settings] Toolset: {this._settings.ToolsetDirectory}");
-        this._vm.Log($"[Settings] BD3D: {this._settings.BD3DExecutable}");
-        this._vm.Log($"[Settings] FFmpeg: {this._settings.FfmpegExecutable}");
-        this._vm.Log($"[Settings] Projects: {this._settings.ProjectDirectory}");
-        this._vm.Log($"[Settings] Output: {(string.IsNullOrWhiteSpace(this._settings.OutputDirectory) ? "(project folder)" : this._settings.OutputDirectory)}");
-        this._vm.Log("Ready. Drag & Drop a 3D movie folder or MKV file to begin.");
+        this.AppendLog($"[Settings] Toolset: {this._settings.ToolsetDirectory}");
+        this.AppendLog($"[Settings] BD3D: {this._settings.BD3DExecutable}");
+        this.AppendLog($"[Settings] FFmpeg: {this._settings.FfmpegExecutable}");
+        this.AppendLog($"[Settings] Projects: {this._settings.ProjectDirectory}");
+        this.AppendLog($"[Settings] Output: {(string.IsNullOrWhiteSpace(this._settings.OutputDirectory) ? "(project folder)" : this._settings.OutputDirectory)}");
+        this.AppendLog("Ready. Drag & Drop a 3D movie folder or MKV file to begin.");
     }
 
     /// <summary>
@@ -55,48 +55,56 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Appends a line to the log box and, while the user is at the bottom, keeps the newest line in view; scrolling up to read
-    /// or select older text isn't yanked away. Once the box holds more than MaxLogLines + LogTrimBatch lines, the oldest
-    /// LogTrimBatch lines are dropped in one go (trimming per line would rebuild the whole text every time).
+    /// The log's entry point; may be called from any thread. The line is stamped here, before any hop to the UI thread,
+    /// so the time is when it was logged rather than when the UI got around to showing it.
     /// </summary>
-    private void AppendLog(string line)
+    private void AppendLog(string message)
     {
-        this.TxtLog.AppendText(line + Environment.NewLine);
-        this._logLineCount += 1 + line.AsSpan().Count('\n'); // a message may itself contain line breaks
-        if (this._logLineCount > MaxLogLines + LogTrimBatch)
-        {
-            string text = this.TxtLog.Text;
-            int cut = 0;
-            for (int removed = 0; removed < LogTrimBatch && cut >= 0; removed++)
-            {
-                cut = text.IndexOf('\n', cut) is int newline and >= 0 ? newline + 1 : -1;
-            }
-            if (cut > 0)
-            {
-                this.TxtLog.Text = text[cut..];
-                this._logLineCount -= LogTrimBatch;
-            }
-        }
-        // ScrollToEnd has to wait until layout has measured the new text, and queued requests are coalesced so a burst of
-        // lines costs one scroll.
-        if (!this._followTail || this._scrollPending)
-        {
-            return;
-        }
-        this._scrollPending = true;
+        string line = $"[{DateTime.Now:HH:mm:ss}] {message}";
         if (this.Dispatcher.CheckAccess())
         {
-            ScrollToEnd();
+            WriteLogLine();
         }
         else
         {
-            this.Dispatcher.BeginInvoke(new Action(ScrollToEnd), DispatcherPriority.Loaded);
+            this.Dispatcher.BeginInvoke(WriteLogLine, DispatcherPriority.Background);
         }
 
-        void ScrollToEnd()
+        /// <summary>
+        /// UI thread only. Appends a line to the log box and, while the user is at the bottom, keeps the newest line in view;
+        /// scrolling up to read or select older text isn't yanked away. Once the box holds more than MaxLogLines + LogTrimBatch
+        /// lines, the oldest LogTrimBatch lines are dropped in one go (trimming per line would rebuild the whole text every time).
+        /// </summary>
+        void WriteLogLine()
         {
-            this._scrollPending = false;
-            this.TxtLog.ScrollToEnd();
+            this.TxtLog.AppendText(line + Environment.NewLine);
+            this._logLineCount += 1 + line.AsSpan().Count('\n'); // a message may itself contain line breaks
+            if (this._logLineCount > MaxLogLines + LogTrimBatch)
+            {
+                string text = this.TxtLog.Text;
+                int cut = 0;
+                for (int removed = 0; removed < LogTrimBatch && cut >= 0; removed++)
+                {
+                    cut = text.IndexOf('\n', cut) is int newline and >= 0 ? newline + 1 : -1;
+                }
+                if (cut > 0)
+                {
+                    this.TxtLog.Text = text[cut..];
+                    this._logLineCount -= LogTrimBatch;
+                }
+            }
+            // Always deferred, even though we're on the UI thread: ScrollToEnd called now would scroll to the old end, because
+            // layout hasn't measured the new text yet. Queued requests are coalesced so a burst of lines costs one scroll.
+            if (!this._followTail || this._scrollPending)
+            {
+                return;
+            }
+            this._scrollPending = true;
+            this.Dispatcher.BeginInvoke(() =>
+            {
+                this._scrollPending = false;
+                this.TxtLog.ScrollToEnd();
+            }, DispatcherPriority.Loaded);
         }
     }
 
@@ -136,7 +144,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            this._vm.Log($"Could not load '{path}': {ex.Message}");
+            this.AppendLog($"Could not load '{path}': {ex.Message}");
         }
     }
 
@@ -144,7 +152,7 @@ public partial class MainWindow : Window
     {
         if (!File.Exists(this._settings.BD3DExecutable))
         {
-            this._vm.Log($"Error: BD3D2MK3D not found at {this._settings.BD3DExecutable}");
+            this.AppendLog($"Error: BD3D2MK3D not found at {this._settings.BD3DExecutable}");
             return;
         }
         Job job = this._vm.Job;
@@ -163,7 +171,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            this._vm.Log($"Pipeline error: {ex.Message}");
+            this.AppendLog($"Pipeline error: {ex.Message}");
         }
         finally
         {
