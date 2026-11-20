@@ -57,9 +57,6 @@ public static class Program
             .Bind(settingsConfig, binder => binder.ErrorOnUnknownConfiguration = true)
             .PostConfigure(settings => settings.ExpandEnvironmentVariables())
             .ValidateOnStart();
-        builder.Services
-            .AddOptions<TmdbOptions>()
-            .Bind(settingsConfig.GetSection("Tmdb"), binder => binder.ErrorOnUnknownConfiguration = true);
         // MovieDetector is captured by the singleton JobRunner, so its HttpClient lives for the whole session. The factory's
         // handler rotation can't help a client that is never released, so it is switched off (infinite handler lifetime) and
         // the handler itself retires pooled connections instead, which keeps DNS fresh.

@@ -110,13 +110,13 @@ public partial class MainWindow : Window
 
     private void Window_DragOver(object sender, DragEventArgs e)
     {
-        e.Effects = this._vm.CanExecute && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Effects = !this._vm.IsRunning && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
     private void Window_Drop(object sender, DragEventArgs e)
     {
-        if (this._vm.CanExecute && e.Data.GetData(DataFormats.FileDrop) is string[] and [{ } droppedPath, ..])
+        if (!this._vm.IsRunning && e.Data.GetData(DataFormats.FileDrop) is string[] and [{ } droppedPath, ..])
         {
             _ = this.LoadAsync(droppedPath);
         }

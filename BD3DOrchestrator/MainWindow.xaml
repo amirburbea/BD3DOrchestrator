@@ -10,6 +10,7 @@
         mc:Ignorable="d" d:DataContext="{d:DesignInstance {x:Type local:MainWindowViewModel}}">
 
     <Window.Resources>
+        <local:NegatedBooleanConverter x:Key="NegatedBooleanConverter" />
         <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
             <Setter Property="Margin" Value="0,4,0,4"/>
         </Style>
@@ -42,20 +43,20 @@
                     <ColumnDefinition Width="*"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" IsEnabled="{Binding CanExecute}">
+                <StackPanel Grid.Column="0" IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}">
                     <DockPanel LastChildFill="True">
                         <TextBlock Text="Movie Title: " FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
                         <TextBox Text="{Binding Job.MovieTitle, UpdateSourceTrigger=PropertyChanged}" FontSize="14" FontWeight="SemiBold" Margin="4,0,10,0"/>
                     </DockPanel>
                     <TextBlock Text="{Binding Job.DetectionReason}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,0"/>
                 </StackPanel>
-                <Button Grid.Column="1" Content="Browse..." Click="BtnBrowse_Click" Padding="16,8" VerticalAlignment="Center" IsEnabled="{Binding CanExecute}"/>
+                <Button Grid.Column="1" Content="Browse..." Click="BtnBrowse_Click" Padding="16,8" VerticalAlignment="Center" IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}"/>
             </Grid>
         </Border>
 
         <!-- Configuration Options -->
         <Border Grid.Row="2" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
-            <StackPanel IsEnabled="{Binding CanExecute}">
+            <StackPanel IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}">
                 <TextBlock Text="Automated Pipeline Settings" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6"/>
 
                 <CheckBox IsChecked="{Binding Job.ConvertDtsToEac3}"
@@ -173,7 +174,7 @@
         <Grid Grid.Row="4">
             <Button Content="{Binding ActionButtonText}"
                     Style="{DynamicResource AccentButtonStyle}"
-                    IsEnabled="{Binding CanExecute}"
+                    IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}"
                     Click="BtnAutoRunAll_Click" FontSize="14" FontWeight="SemiBold" Padding="16,10" HorizontalAlignment="Stretch"/>
         </Grid>
     </Grid>

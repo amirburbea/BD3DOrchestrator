@@ -19,6 +19,10 @@ public class AppSettingsValidator : IValidateOptions<AppSettings>
         {
             failures.Add($"Encoding profile not found: '{options.ResolvedProfilePath}' (set ProfilePath or put profile.json next to the exe).");
         }
+        if (string.IsNullOrWhiteSpace(options.TmdbApiReadAccessToken))
+        {
+            failures.Add($"{nameof(options.TmdbApiReadAccessToken)} is not set.");
+        }
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 

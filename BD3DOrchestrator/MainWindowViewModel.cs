@@ -16,16 +16,8 @@ public sealed class MainWindowViewModel : ObservableObject, IMessageLogger
     public bool IsRunning
     {
         get;
-        set
-        {
-            if (this.SetField(ref field, value))
-            {
-                this.OnPropertyChanged(nameof(this.CanExecute));
-            }
-        }
+        set => this.SetField(ref field, value);
     }
-
-    public bool CanExecute => !this.IsRunning;
 
     public string ActionButtonText
     {

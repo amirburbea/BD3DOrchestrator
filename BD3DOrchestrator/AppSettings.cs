@@ -25,8 +25,8 @@ public class AppSettings
     /// <summary>Shared encoding profile. Empty = profile.json next to the exe.</summary>
     public string ProfilePath { get; set; } = string.Empty;
 
-    /// <summary>TMDb API credentials for movie title/year/animation lookup.</summary>
-    public TmdbOptions Tmdb { get; set; } = new();
+    /// <summary>TMDb v4 "API Read Access Token", sent as a Bearer token for movie lookup.</summary>
+    public string TmdbApiReadAccessToken { get; set; } = string.Empty;
 
     public string ResolvedProfilePath => string.IsNullOrWhiteSpace(this.ProfilePath)
         ? Path.Combine(AppContext.BaseDirectory, "profile.json")
