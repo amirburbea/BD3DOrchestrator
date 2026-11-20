@@ -25,8 +25,6 @@ public interface IEncodeProfile
 /// </summary>
 public sealed class EncodeProfile : IEncodeProfile
 {
-    private static readonly char[] _sanitizeChars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
-
     private readonly List<KeyValuePair<string, string>> _settings = [];
 
     public string Hash { get; }
@@ -77,38 +75,12 @@ public sealed class EncodeProfile : IEncodeProfile
         this.TclBlock = this.BuildTclBlock();
     }
 
-    public static string ApplyTitle(string template, string title) => template.Replace("{title}", title);
-
-    public static string SanitizeFileName(string name)
-    {
-        foreach (char c in _sanitizeChars)
-        {
-            name = name.Replace(c.ToString(), "");
-        }
-        return name.Trim().TrimEnd('.');
-    }
-
-    public static string TclQuote(string value)
-    {
-        StringBuilder sb = new("\"");
-        foreach (char c in value)
-        {
-            if (c is '\\' or '"' or '$' or '[' or ']')
-            {
-                sb.Append('\\');
-            }
-            sb.Append(c);
-        }
-        return sb.Append('"').ToString();
-    }
-
-
     private string BuildTclBlock()
     {
         StringBuilder sb = new();
         foreach ((string key, string value) in this._settings)
         {
-            string v = TclQuote(value);
+            string v = TclMethods.Quote(value);
             sb.Append("set ::config(").Append(key).Append(") ").Append(v).Append('\n');
             sb.Append("set ::").Append(key).Append(' ').Append(v).Append('\n');
         }

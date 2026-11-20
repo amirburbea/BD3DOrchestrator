@@ -29,7 +29,7 @@ public sealed class JobRunner(
         MediaInspectionResult inspection = await mediaInspector.InspectAsync(path, cancellationToken).ConfigureAwait(false);
         MovieInfo detected = await movieDetector.DetectAsync(path, cancellationToken).ConfigureAwait(false);
         job.Inspection = inspection;
-        string displayName = !string.IsNullOrEmpty(detected.Title) ? detected.Title : inspection.MovieTitle;
+        string displayName = detected.Title is { Length: > 0 } title ? title : inspection.MovieTitle;
         if (detected.Year > 0 && !displayName.Contains(detected.Year.ToString()))
         {
             displayName = $"{displayName} ({detected.Year})";
@@ -85,7 +85,7 @@ public sealed class JobRunner(
         bool ingestCompanions = job.IngestCompanions;
         logger.Log($"[Profile] {profile.SourcePath} (hash {profile.Hash}, {profile.Settings.Count} settings) -> output '{profile.OutputNameTemplate}'");
         string? resolvedProject = null;
-        // DataHandler an isolated temp job sandbox so BD3D2MK3D's original install folder is never touched or modified.
+        // Create an isolated temp job sandbox so BD3D2MK3D's original install folder is never touched or modified.
         // This guarantees complete isolation between multiple parallel instances or manual runs.
         string jobTempDir = Path.Combine(Path.GetTempPath(), "BD3DOrchestrator", $"Job_{Guid.NewGuid():N}");
         fileSystem.CreateDirectory(jobTempDir);
@@ -261,8 +261,8 @@ public sealed class JobRunner(
         try
         {
             string normalizedMkv = mkvPath.Replace("\\", "/");
-            string projQ = EncodeProfile.TclQuote(settings.ProjectDirectory.Replace("\\", "/"));
-            string outQ = EncodeProfile.TclQuote(settings.OutputDirectory.Replace("\\", "/"));
+            string projQ = TclMethods.Quote(settings.ProjectDirectory.Replace("\\", "/"));
+            string outQ = TclMethods.Quote(settings.OutputDirectory.Replace("\\", "/"));
             int outUsed = string.IsNullOrWhiteSpace(settings.OutputDirectory) ? 0 : 1;
             string escapedTitle = movieTitle.Replace("\"", "\\\"").Replace("[", "\\[").Replace("]", "\\]");
             string hook = $@"
@@ -382,7 +382,7 @@ after 150 {{
     {
         // Only folder names BD3D2MK3D could have produced for exactly this title. Never a wildcard match: a short title
         // like "Up" would match another movie's project, and we would then patch and encode the wrong one.
-        foreach (string name in new[] { movieTitle, EncodeProfile.SanitizeFileName(movieTitle) })
+        foreach (string name in new[] { movieTitle, PathMethods.SanitizeFileName(movieTitle) })
         {
             if (string.IsNullOrWhiteSpace(name))
             {

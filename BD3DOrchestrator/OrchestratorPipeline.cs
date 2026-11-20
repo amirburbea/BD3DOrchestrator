@@ -42,7 +42,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
     /// </summary>
     public void ApplyOutputNaming(string projectMkv3dDir, string title)
     {
-        string cleanTitle = EncodeProfile.SanitizeFileName(title);
+        string cleanTitle = PathMethods.SanitizeFileName(title);
         foreach (string name in _mux3DOptionsFiles)
         {
             string jsonPath = Path.Combine(projectMkv3dDir, name);
@@ -65,7 +65,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
                     {
                         case "--output":
                             {
-                                string fileName = EncodeProfile.ApplyTitle(profile.OutputNameTemplate, cleanTitle);
+                                string fileName = profile.OutputNameTemplate.Replace("{title}", cleanTitle);
                                 if (custom)
                                 {
                                     fileName = $"{Path.ChangeExtension(fileName, null)}.custom{Path.GetExtension(fileName)}";
@@ -76,7 +76,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
                             }
                             break;
                         case "--title":
-                            args[i + 1] = EncodeProfile.ApplyTitle(profile.MkvTitleTemplate, title);
+                            args[i + 1] = profile.MkvTitleTemplate.Replace("{title}", title);
                             break;
                     }
                 }
@@ -190,7 +190,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
                 logger.Log($"[Audio] Could not parse __MUX_3D_OPTIONS.json: {ex.Message}");
             }
         }
-        // Local-only fallback (element.g. JSON already patched by a previous run)
+        // Local-only fallback (e.g. JSON already patched by a previous run)
         string? scanned = fileSystem.GetFiles(projectMkv3dDir)
             .Where(f => f.EndsWith(".dts", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".dtshd", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(fileSystem.GetFileLength)
@@ -340,7 +340,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
                 hasAudioTrack = true;
             }
             // If still no audio track in JSON, check if tsMuxeR demuxed an audio file in the
-            // project folder that BD3D2MK3D missed or failed to rename (element.g. *.ec3, *.ac3, *.dts)
+            // project folder that BD3D2MK3D missed or failed to rename (e.g. *.ec3, *.ac3, *.dts)
             if (!hasAudioTrack)
             {
                 List<string> audioCandidates = [];

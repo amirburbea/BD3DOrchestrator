@@ -2,7 +2,7 @@ using System.Collections.Generic;
 
 namespace BD3DOrchestrator;
 
-public class MediaInspectionResult
+public sealed class MediaInspectionResult
 {
     public string MkvPath { get; set; } = string.Empty;
     public string MovieTitle { get; set; } = string.Empty;
