@@ -57,6 +57,14 @@ public static class Program
             .Bind(settingsConfig, binder => binder.ErrorOnUnknownConfiguration = true)
             .PostConfigure(settings => settings.ExpandEnvironmentVariables())
             .ValidateOnStart();
+        // TMDb credentials have their own optional file (kept out of Git), bound separately so they never mix with AppSettings.
+        IConfigurationRoot tmdbConfig = new ConfigurationBuilder()
+            .SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("tmdb-keys.json", optional: true)
+            .Build();
+        builder.Services
+            .AddOptions<TmdbOptions>()
+            .Bind(tmdbConfig, binder => binder.ErrorOnUnknownConfiguration = true);
         // MovieDetector is captured by the singleton JobRunner, so its HttpClient lives for the whole session. The factory's
         // handler rotation can't help a client that is never released, so it is switched off (infinite handler lifetime) and
         // the handler itself retires pooled connections instead, which keeps DNS fresh.

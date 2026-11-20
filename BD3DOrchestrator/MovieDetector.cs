@@ -2,17 +2,22 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Options;
 
 namespace BD3DOrchestrator;
 
 public record MovieInfo(string Title, int Year, bool IsAnimation, string Reason);
 
-public partial class MovieDetector(HttpClient httpClient)
+public partial class MovieDetector(HttpClient httpClient, IOptions<TmdbOptions> tmdbOptions)
 {
+    /// <summary>TMDb's genre id for Animation.</summary>
+    private const int TmdbAnimationGenreId = 16;
+
     private static readonly HashSet<string> _known3DAnimations = [
         with(StringComparer.OrdinalIgnoreCase),
         "Toy Story", "Toy Story 2", "Toy Story 3", "Toy Story 4",
@@ -53,14 +58,10 @@ public partial class MovieDetector(HttpClient httpClient)
         {
             raw = raw[..^7];
         }
-        if (TitleAndYearRegex().Match(raw) is { Success: true, Groups: { } groups })
+        // Only "(yyyy)" is a year; a bare number is part of the title ("Blade Runner 2049 (2017)" is "Blade Runner 2049", 2017).
+        if (TitleAndYearRegex().Match(raw) is { Success: true } match && int.TryParse(match.Groups[2].Value, out int parsedYear))
         {
-            string cleanTitle = groups[1].Value.Trim();
-            string yearStr = string.IsNullOrEmpty(groups[2].Value) ? groups[3].Value : groups[2].Value;
-            if (int.TryParse(yearStr, out int parsedYear))
-            {
-                return (cleanTitle, parsedYear);
-            }
+            return (match.Groups[1].Value.Trim(), parsedYear);
         }
         return (raw.Trim(), 0);
     }
@@ -70,57 +71,101 @@ public partial class MovieDetector(HttpClient httpClient)
         string dir = Directory.Exists(path) ? path : (Path.GetDirectoryName(path) ?? ".");
         string nameCandidate = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         (string title, int year) = ParseTitleAndYear(nameCandidate);
-        // 1. Check local .nfo if available in the folder
+        // 1. A local .nfo is authoritative (title, year and genre).
         if (TryReadNfo(dir) is { } nfoInfo)
         {
             return nfoInfo;
         }
-        // 2. Check offline known 3D animations list
+        // 2. The offline list says whether it's animation; TMDb is still asked when the file name has no year.
+        string? knownAnimation = FindKnownAnimation(title);
+        string token = tmdbOptions.Value.ApiReadAccessToken;
+        TmdbLookup? tmdb = !string.IsNullOrWhiteSpace(token) && (knownAnimation is null || year == 0)
+            ? await this.LookUpTmdbAsync(token, title, year, cancellationToken).ConfigureAwait(false)
+            : null;
+        // The file name's "(yyyy)" always wins; TMDb's year is only a fallback, for any genre.
+        int finalYear = year > 0 ? year : tmdb?.Year ?? 0;
+        string notes = (year == 0 && finalYear > 0 ? $"; year {finalYear} from TMDb" : "")
+            + (string.IsNullOrWhiteSpace(token) ? "; online lookup off (no tmdb-keys.json)" : "");
+        if (knownAnimation is not null)
+        {
+            return new(title, finalYear, true, $"Matched 3D Animation database ({knownAnimation}){notes}");
+        }
+        if (tmdb is { IsAnimation: true })
+        {
+            return new(title, finalYear, true, $"TMDb confirmed Animation ({tmdb.MatchedTitle}){notes}");
+        }
+        return new(title, finalYear, false, $"Live action or unconfirmed{notes}");
+    }
+
+    private static string? FindKnownAnimation(string title)
+    {
         if (_known3DAnimations.Contains(title))
         {
-            return new(title, year, true, $"Matched 3D Animation database ({title})");
+            return title;
         }
-        // Partial match against known animation titles
         foreach (string known in _known3DAnimations)
         {
             if (title.StartsWith(known, StringComparison.OrdinalIgnoreCase) || known.StartsWith(title, StringComparison.OrdinalIgnoreCase))
             {
-                return new(title, year, true, $"Matched 3D Animation database ({known})");
+                return known;
             }
         }
-        // 3. Fallback: Query iTunes search API (No API key needed)
+        return null;
+    }
+
+    private sealed record TmdbLookup(string MatchedTitle, int Year, bool IsAnimation);
+
+    /// <summary>
+    /// Searches TMDb's movie catalogue, passing the file name's year (when there is one) to narrow the match. A result whose
+    /// title matches exactly is preferred, otherwise TMDb's top result is used. Null when nothing is found or the lookup fails.
+    /// The token goes in the Authorization header, never in the URL.
+    /// </summary>
+    private async Task<TmdbLookup?> LookUpTmdbAsync(string token, string title, int year, CancellationToken cancellationToken)
+    {
         try
         {
-            string queryUrl = $"https://itunes.apple.com/search?term={Uri.EscapeDataString(title)}&entity=movie&limit=3";
-            using HttpResponseMessage response = await httpClient.GetAsync(queryUrl, cancellationToken).ConfigureAwait(false);
-            if (response.IsSuccessStatusCode)
+            string url = $"https://api.themoviedb.org/3/search/movie?query={Uri.EscapeDataString(title)}&include_adult=false"
+                + (year > 0 ? $"&year={year}" : "");
+            using HttpRequestMessage request = new(HttpMethod.Get, url);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            using HttpResponseMessage response = await httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
             {
-                string jsonString = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-                using JsonDocument doc = JsonDocument.Parse(jsonString);
-                if (doc.RootElement.TryGetProperty("results", out JsonElement results) && results.GetArrayLength() > 0)
+                return null;
+            }
+            string json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using JsonDocument doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("results", out JsonElement results) || results.GetArrayLength() == 0)
+            {
+                return null;
+            }
+            JsonElement best = results[0];
+            foreach (JsonElement item in results.EnumerateArray())
+            {
+                if (item.TryGetProperty("title", out JsonElement itemTitle) && string.Equals(itemTitle.GetString(), title, StringComparison.OrdinalIgnoreCase))
                 {
-                    foreach (JsonElement item in results.EnumerateArray())
-                    {
-                        string genre = item.TryGetProperty("primaryGenreName", out JsonElement genreElem) ? (genreElem.GetString() ?? "") : "";
-                        string releaseDate = item.TryGetProperty("releaseDate", out JsonElement dateElem) ? (dateElem.GetString() ?? "") : "";
-                        int parsedYear = year;
-                        if (parsedYear == 0 && releaseDate.Length >= 4 && int.TryParse(releaseDate[..4], out int y))
-                        {
-                            parsedYear = y;
-                        }
-                        if (genre.Equals("Animation", StringComparison.OrdinalIgnoreCase))
-                        {
-                            return new(title, parsedYear, true, "Apple Movie API confirmed Animation");
-                        }
-                    }
+                    best = item;
+                    break;
                 }
             }
+            string matchedTitle = best.TryGetProperty("title", out JsonElement titleElem) && titleElem.GetString() is { Length: > 0 } t ? t : title;
+            int matchedYear = best.TryGetProperty("release_date", out JsonElement dateElem) && dateElem.GetString() is { Length: >= 4 } releaseDate && int.TryParse(releaseDate[..4], out int y) ? y : 0;
+            bool isAnimation = false;
+            if (best.TryGetProperty("genre_ids", out JsonElement genreIds) && genreIds.ValueKind == JsonValueKind.Array)
+            {
+                foreach (JsonElement genreId in genreIds.EnumerateArray())
+                {
+                    isAnimation |= genreId.TryGetInt32(out int id) && id == TmdbAnimationGenreId;
+                }
+            }
+            return new(matchedTitle, matchedYear, isAnimation);
         }
         catch
         {
-            // Network lookup failed, fallback gracefully
+            // Network lookup failed or returned something unexpected; detection carries on without it.
+            return null;
         }
-        return new(title, year, false, "Live action or unconfirmed");
     }
 
     private static MovieInfo? TryReadNfo(string directory)
@@ -157,6 +202,7 @@ public partial class MovieDetector(HttpClient httpClient)
     [GeneratedRegex(@"<title>(.*?)</title>", RegexOptions.IgnoreCase, "en-US")]
     private static partial Regex TitleRegex();
 
-    [GeneratedRegex(@"^(.*?)(?:\s*\((\d{4})\)|\s+(\d{4}))")]
+    /// <summary>"Title (yyyy)": greedy, so the year is the last one in parentheses and any digits in the title stay in the title.</summary>
+    [GeneratedRegex(@"^(.*\S)\s*\((\d{4})\)")]
     private static partial Regex TitleAndYearRegex();
 }
