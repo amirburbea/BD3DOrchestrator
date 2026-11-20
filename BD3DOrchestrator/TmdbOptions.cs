@@ -1,8 +1,8 @@
 namespace BD3DOrchestrator;
 
 /// <summary>
-/// TMDb credentials, bound from tmdb-keys.json next to the exe. That file lives in the deploy folder, outside the Git repo,
-/// and is copied into every build and publish. Without it (or with an empty token) the online lookup is simply skipped.
+/// TMDb credentials, bound from the "Tmdb" section in appsettings.json.
+/// Without an <see cref="ApiReadAccessToken"/>, the online lookup is skipped.
 /// </summary>
 public sealed class TmdbOptions
 {

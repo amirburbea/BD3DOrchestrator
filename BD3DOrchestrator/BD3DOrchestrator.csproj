@@ -24,10 +24,6 @@
     <None Update="profile.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <!-- TMDb keys live in deploy\, outside the repo, and ride along with every build and publish when present. -->
-    <None Include="..\..\deploy\tmdb-keys.json" Condition="Exists('..\..\deploy\tmdb-keys.json')" Link="tmdb-keys.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
 
   <ItemGroup>
