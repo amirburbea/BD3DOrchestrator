@@ -8,9 +8,9 @@ using System.Threading.Tasks;
 
 namespace BD3DOrchestrator;
 
-public partial class MediaInspector(string toolsetPath)
+public partial class MediaInspector(AppSettings settings)
 {
-    private readonly string _mkvmergePath = Path.Combine(toolsetPath, "mkvmerge.exe");
+    private readonly string _mkvmergePath = Path.Combine(settings.ToolsetDirectory, "mkvmerge.exe");
 
     public async Task<MediaInspectionResult> InspectAsync(string inputPath, CancellationToken cancellationToken = default)
     {

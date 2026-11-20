@@ -11,15 +11,14 @@ namespace BD3DOrchestrator;
 /// Every await here uses ConfigureAwait(false): none of this code touches the UI directly (logging is marshalled by the
 /// supplied logger), so only the window that kicks a job off awaits on the UI context.
 /// </summary>
-public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action<string> logger)
+public class JobRunner(AppSettings settings, MediaInspector mediaInspector, MovieDetector movieDetector, OrchestratorPipeline pipeline, IMessageLogger logger)
 {
     /// <summary>Inspects the input and fills in the job's title, detection result and suggested options.</summary>
     public async Task LoadAsync(Job job, string path, CancellationToken cancellationToken = default)
     {
         job.InputPath = path;
-        logger($"Analyzing: {path}...");
-        MediaInspector inspector = new(settings.ToolsetDirectory);
-        MediaInspectionResult inspection = await inspector.InspectAsync(path, cancellationToken).ConfigureAwait(false);
+        logger.Log($"Analyzing: {path}...");
+        MediaInspectionResult inspection = await mediaInspector.InspectAsync(path, cancellationToken).ConfigureAwait(false);
         MovieInfo detected = await movieDetector.DetectAsync(path, cancellationToken).ConfigureAwait(false);
         job.Inspection = inspection;
         string displayName = !string.IsNullOrEmpty(detected.Title) ? detected.Title : inspection.MovieTitle;
@@ -33,12 +32,12 @@ public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action
         if (detected.IsAnimation && detected.Year is < 2022 and not 0)
         {
             job.ApplyAvsTweak = true;
-            logger($"★ Animation pre-2022 detected ({detected.Year}) -> Auto-enabled AVS OLED Tweak!");
+            logger.Log($"★ Animation pre-2022 detected ({detected.Year}) -> Auto-enabled AVS OLED Tweak!");
         }
         else if (detected.IsAnimation && detected.Year >= 2022)
         {
             job.ApplyAvsTweak = false;
-            logger($"Animation from {detected.Year} detected -> Kept AVS OLED Tweak OFF (newer HDR/high contrast master).");
+            logger.Log($"Animation from {detected.Year} detected -> Kept AVS OLED Tweak OFF (newer HDR/high contrast master).");
         }
         else
         {
@@ -46,21 +45,21 @@ public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action
         }
         if (inspection.HasDtsAudio)
         {
-            logger("Detected DTS audio stream in MKV -> Will convert to EAC3 5.1.");
+            logger.Log("Detected DTS audio stream in MKV -> Will convert to EAC3 5.1.");
         }
         else if (!inspection.HasDolbyAudio && inspection.CompanionFiles.Count > 0)
         {
-            logger("MKV has no embedded audio, but companion tracks were found (e.g. .ec3/.mka).");
+            logger.Log("MKV has no embedded audio, but companion tracks were found (e.g. .ec3/.mka).");
         }
         if (inspection.CompanionFiles.Count > 0)
         {
-            logger($"Found {inspection.CompanionFiles.Count} matching companion file(s) in folder:");
+            logger.Log($"Found {inspection.CompanionFiles.Count} matching companion file(s) in folder:");
             foreach (string file in inspection.CompanionFiles)
             {
-                logger($"  - {Path.GetFileName(file)}");
+                logger.Log($"  - {Path.GetFileName(file)}");
             }
         }
-        logger("Ready. Click 'Auto-Run Pipeline' to perform the complete workflow unattended.");
+        logger.Log("Ready. Click 'Auto-Run Pipeline' to perform the complete workflow unattended.");
     }
 
     /// <summary>Runs the full pipeline. Returns true only when the encode launcher was started.</summary>
@@ -68,7 +67,7 @@ public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action
     {
         if (job.Inspection is not { } inspection || string.IsNullOrEmpty(inspection.MkvPath))
         {
-            logger("[Error] No movie loaded; nothing to run.");
+            logger.Log("[Error] No movie loaded; nothing to run.");
             return false;
         }
         // Snapshot: later edits to the job (or a new job replacing it) can't change a run in progress.
@@ -81,11 +80,11 @@ public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action
         {
             string profilePath = settings.ResolvedProfilePath;
             profile = EncodeProfile.Load(profilePath);
-            logger($"[Profile] {profilePath} (hash {profile.Hash}, {profile.Settings.Count} settings) -> output '{profile.OutputNameTemplate}'");
+            logger.Log($"[Profile] {profilePath} (hash {profile.Hash}, {profile.Settings.Count} settings) -> output '{profile.OutputNameTemplate}'");
         }
         catch (Exception ex)
         {
-            logger($"[Error] Cannot load encoding profile, aborting before anything runs: {ex.Message}");
+            logger.Log($"[Error] Cannot load encoding profile, aborting before anything runs: {ex.Message}");
             return false;
         }
         string? resolvedProject = null;
@@ -97,15 +96,15 @@ public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action
         Process? bd3dProcess = null;
         try
         {
-            logger($"[Step 1] Launching BD3D2MK3D for '{titleToUse}' (Sandbox: {Path.GetFileName(jobTempDir)})...");
+            logger.Log($"[Step 1] Launching BD3D2MK3D for '{titleToUse}' (Sandbox: {Path.GetFileName(jobTempDir)})...");
             if (Process.Start(startInfo: new(settings.BD3DExecutable) { WorkingDirectory = jobTempDir, UseShellExecute = true }) is not { Id: int pid } process)
             {
 
-                logger("Failed to start BD3D2MK3D.");
+                logger.Log("Failed to start BD3D2MK3D.");
                 return false;
             }
             bd3dProcess = process;
-            logger($"[Step 1] Demuxing streams via BD3D2MK3D (PID: {pid}). Monitoring for completion...");
+            logger.Log($"[Step 1] Demuxing streams via BD3D2MK3D (PID: {pid}). Monitoring for completion...");
             while (!bd3dProcess.HasExited && !cancellationToken.IsCancellationRequested)
             {
                 foreach (Process proc in Process.GetProcessesByName("mkvinfo"))
@@ -117,7 +116,7 @@ public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action
                             if (DateTime.Now - proc.StartTime > TimeSpan.FromSeconds(10))
                             {
                                 proc.Kill();
-                                logger("⚡ [Watchdog] Terminated hung mkvinfo.exe process to let BD3D2MK3D proceed.");
+                                logger.Log("⚡ [Watchdog] Terminated hung mkvinfo.exe process to let BD3D2MK3D proceed.");
                             }
                         }
                         catch { }
@@ -144,13 +143,13 @@ public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action
                             string logText = File.ReadAllText(logFile);
                             if (logText.Contains("Successfully done", StringComparison.OrdinalIgnoreCase))
                             {
-                                logger("[Step 1] BD3D2MK3D demux & project generation completed successfully!");
+                                logger.Log("[Step 1] BD3D2MK3D demux & project generation completed successfully!");
                                 try
                                 {
                                     if (!bd3dProcess.HasExited)
                                     {
                                         bd3dProcess.Kill();
-                                        logger($"[Step 1] Cleanly terminated own BD3D2MK3D instance (PID: {pid}).");
+                                        logger.Log($"[Step 1] Cleanly terminated own BD3D2MK3D instance (PID: {pid}).");
                                     }
                                 }
                                 catch { }
@@ -185,18 +184,17 @@ public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action
         string projectFolder = resolvedProject ?? this.FindProjectMkv3dFolder(titleToUse);
         if (string.IsNullOrEmpty(projectFolder) || !Directory.Exists(projectFolder))
         {
-            logger($"[Error] Could not find generated project folder for '{titleToUse}'. Aborting pipeline.");
+            logger.Log($"[Error] Could not find generated project folder for '{titleToUse}'. Aborting pipeline.");
             return false;
         }
-        logger($"[Step 2] Ingesting Audio & Patching Project in: {projectFolder}");
-        OrchestratorPipeline pipeline = new(settings.FfmpegExecutable, logger);
+        logger.Log($"[Step 2] Ingesting Audio & Patching Project in: {projectFolder}");
         // Convert audio if DTS detected
         string? customEac3 = null;
         if (convertDts && inspection.HasDtsAudio)
         {
             if (pipeline.FindDemuxedDtsFile(projectFolder) is not { } localDts)
             {
-                logger("[Audio] No demuxed DTS file found in project folder; skipping conversion (original track left in mux).");
+                logger.Log("[Audio] No demuxed DTS file found in project folder; skipping conversion (original track left in mux).");
             }
             else
             {
@@ -223,7 +221,7 @@ public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action
             pipeline.UpdateMuxJson(projectFolder, customEac3, inspection.CompanionFiles);
         }
         // 3. Start Encoding & Muxing
-        logger("[Step 3] Launching background x264/x265 encode and final MKV mux...");
+        logger.Log("[Step 3] Launching background x264/x265 encode and final MKV mux...");
         string launcherCmd = Path.Combine(projectFolder, "__ENCODE_3D_LAUNCHER.cmd");
         if (!File.Exists(launcherCmd))
         {
@@ -238,12 +236,12 @@ public class JobRunner(AppSettings settings, MovieDetector movieDetector, Action
                 UseShellExecute = true
             };
             Process.Start(encodePsi);
-            logger("🎉 Pipeline complete! Encode is running in low CPU priority background window.");
+            logger.Log("🎉 Pipeline complete! Encode is running in low CPU priority background window.");
             return true;
         }
         else
         {
-            logger($"[Error] Batch launcher not found in {projectFolder}");
+            logger.Log($"[Error] Batch launcher not found in {projectFolder}");
             return false;
         }
     }
@@ -334,11 +332,11 @@ after 150 {{
 ";
             string targetPath = Path.Combine(jobTempDir, "plugin.tcl");
             File.WriteAllText(targetPath, hook);
-            logger($"Created isolated sandbox hook: Auto-opens '{Path.GetFileName(mkvPath)}', sets Title = '{movieTitle}', suppresses prompts & Explorer popup.");
+            logger.Log($"Created isolated sandbox hook: Auto-opens '{Path.GetFileName(mkvPath)}', sets Title = '{movieTitle}', suppresses prompts & Explorer popup.");
         }
         catch (Exception ex)
         {
-            logger($"Warning: Could not create sandbox hook: {ex.Message}");
+            logger.Log($"Warning: Could not create sandbox hook: {ex.Message}");
         }
     }
 

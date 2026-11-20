@@ -10,8 +10,12 @@ using System.Threading.Tasks;
 
 namespace BD3DOrchestrator;
 
-public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logger)
+public partial class OrchestratorPipeline(AppSettings settings, IMessageLogger logger)
 {
+    private static readonly string[] _mux3DOptionsFiles = ["__MUX_3D_OPTIONS.json", "_CUSTOM_MUX_3D_OPTIONS.json"];
+
+    private static readonly string[] _postProcessFiles = ["__POSTPROCESS_3D.cmd", "_CUSTOM_POSTPROCESS_3D.cmd", "_POSTPROCESS_2D.cmd"];
+
     private static readonly HashSet<string> _trackOptionSwitches =
     [
         with(StringComparer.OrdinalIgnoreCase),
@@ -22,7 +26,7 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
         "--sync",
         "--compression",
         "--audio-tracks",
-        "--cues"
+        "--cues",
     ];
 
     private static readonly JsonSerializerOptions _writeOptions = new()
@@ -39,7 +43,7 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
     public void ApplyOutputNaming(string projectMkv3dDir, string title, EncodeProfile profile)
     {
         string cleanTitle = EncodeProfile.SanitizeFileName(title);
-        foreach (string name in new[] { "__MUX_3D_OPTIONS.json", "_CUSTOM_MUX_3D_OPTIONS.json" })
+        foreach (string name in _mux3DOptionsFiles)
         {
             string jsonPath = Path.Combine(projectMkv3dDir, name);
             if (!File.Exists(jsonPath))
@@ -67,7 +71,7 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
                                     fileName = $"{Path.ChangeExtension(fileName, null)}.custom{Path.GetExtension(fileName)}";
                                 }
                                 string newPath = Path.GetDirectoryName(args[i + 1]) is { Length: > 0 } dir ? Path.Combine(dir, fileName) : fileName;
-                                logger($"[Naming] {Path.GetFileName(args[i + 1])} -> {fileName}");
+                                logger.Log($"[Naming] {Path.GetFileName(args[i + 1])} -> {fileName}");
                                 args[i + 1] = newPath;
                             }
                             break;
@@ -80,7 +84,7 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
             }
             catch (Exception ex)
             {
-                logger($"[Naming] Error renaming output in {name}: {ex.Message}");
+                logger.Log($"[Naming] Error renaming output in {name}: {ex.Message}");
             }
         }
     }
@@ -91,9 +95,9 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
     /// </summary>
     public async Task<string?> ConvertAudioToEac3Async(string inputMkv, string outputEac3Path, CancellationToken cancellationToken = default)
     {
-        logger($"[Audio] Checking audio streams for {Path.GetFileName(inputMkv)}...");
+        logger.Log($"[Audio] Checking audio streams for {Path.GetFileName(inputMkv)}...");
         string probeArgs = $"-v error -select_streams a:0 -show_entries stream=codec_name,profile,channels -of csv=p=0 \"{inputMkv}\"";
-        string ffprobeExe = Path.Combine(Path.GetDirectoryName(ffmpegPath) ?? "", "ffprobe.exe");
+        string ffprobeExe = Path.Combine(Path.GetDirectoryName(settings.FfmpegExecutable) ?? "", "ffprobe.exe");
         if (!File.Exists(ffprobeExe))
         {
             ffprobeExe = "ffprobe.exe";
@@ -101,49 +105,49 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
         (int probeCode, string probeData, _) = await ProcessRunner.RunAsync(ffprobeExe, probeArgs, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (probeCode != 0 || string.IsNullOrWhiteSpace(probeData))
         {
-            logger("[Audio] Warning: Could not ffprobe audio streams, falling back to 5.1 EAC3 direct copy/downmix.");
+            logger.Log("[Audio] Warning: Could not ffprobe audio streams, falling back to 5.1 EAC3 direct copy/downmix.");
         }
         string[] parts = probeData.Trim().ToLower().Split(',');
         string codec = parts is [{ } token, ..] ? token.Trim() : "";
         int channels = parts is [_, _, { } count, ..] && int.TryParse(count.Trim(), out int ch) ? ch : 6;
-        logger($"[Audio] Detected audio: Codec={codec}, Channels={channels}");
+        logger.Log($"[Audio] Detected audio: Codec={codec}, Channels={channels}");
         List<string> audioArgs = [];
         if (channels == 8)
         {
-            logger("[Audio] 7.1 detected -> Converting to EAC3 5.1 with Gain-Safe Fold...");
+            logger.Log("[Audio] 7.1 detected -> Converting to EAC3 5.1 with Gain-Safe Fold...");
             string panFilter = "pan=5.1|FL=FL|FR=FR|FC=1.1*FC|LFE=LFE|BL=0.707*SL+0.707*BL|BR=0.707*SR+0.707*BR";
             audioArgs.AddRange(["-af", panFilter, "-c:a", "eac3", "-b:a", "640k"]);
         }
         else if (channels == 7)
         {
-            logger("[Audio] 6.1 detected -> Converting to EAC3 5.1 with Rear-Center fold...");
+            logger.Log("[Audio] 6.1 detected -> Converting to EAC3 5.1 with Rear-Center fold...");
             string panFilter = "pan=5.1|FL=FL|FR=FR|FC=1.1*FC|LFE=LFE|BL=0.707*SL+0.707*BC|BR=0.707*SR+0.707*BC";
             audioArgs.AddRange(["-af", panFilter, "-c:a", "eac3", "-b:a", "640k"]);
         }
         else
         {
-            logger("[Audio] Converting to EAC3 5.1 640k...");
+            logger.Log("[Audio] Converting to EAC3 5.1 640k...");
             audioArgs.AddRange(["-c:a", "eac3", "-b:a", "640k", "-ac", "6"]);
         }
         string ffmpegArgs = $"-y -i \"{inputMkv}\" -map 0:a:0 {string.Join(" ", audioArgs)} \"{outputEac3Path}\"";
         (int exitCode, _, string stderr) = await ProcessRunner.RunAsync(
-            ffmpegPath,
+            settings.FfmpegExecutable,
             ffmpegArgs,
             onStderr: line =>
             {
                 if (line.Contains("size="))
                 {
-                    logger($"[FFmpeg] {line}");
+                    logger.Log($"[FFmpeg] {line}");
                 }
             },
             cancellationToken: cancellationToken
         ).ConfigureAwait(false);
         if (exitCode == 0 && File.Exists(outputEac3Path))
         {
-            logger($"[Audio] Successfully converted to EAC3: {Path.GetFileName(outputEac3Path)}");
+            logger.Log($"[Audio] Successfully converted to EAC3: {Path.GetFileName(outputEac3Path)}");
             return outputEac3Path;
         }
-        logger($"[Audio] Error converting audio with FFmpeg: {stderr}");
+        logger.Log($"[Audio] Error converting audio with FFmpeg: {stderr}");
         return null;
     }
 
@@ -174,16 +178,16 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
                         string candidate = Path.Combine(projectMkv3dDir, arg);
                         if (File.Exists(candidate))
                         {
-                            logger($"[Audio] __MUX_3D_OPTIONS.json references demuxed DTS: {arg}");
+                            logger.Log($"[Audio] __MUX_3D_OPTIONS.json references demuxed DTS: {arg}");
                             return candidate;
                         }
-                        logger($"[Audio] Warning: JSON references '{arg}' but it is not on disk.");
+                        logger.Log($"[Audio] Warning: JSON references '{arg}' but it is not on disk.");
                     }
                 }
             }
             catch (Exception ex)
             {
-                logger($"[Audio] Could not parse __MUX_3D_OPTIONS.json: {ex.Message}");
+                logger.Log($"[Audio] Could not parse __MUX_3D_OPTIONS.json: {ex.Message}");
             }
         }
         // Local-only fallback (element.g. JSON already patched by a previous run)
@@ -193,7 +197,7 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
             .FirstOrDefault();
         if (scanned != null)
         {
-            logger($"[Audio] Using demuxed DTS found in project folder: {Path.GetFileName(scanned)}");
+            logger.Log($"[Audio] Using demuxed DTS found in project folder: {Path.GetFileName(scanned)}");
         }
         return scanned;
     }
@@ -203,28 +207,28 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
         string avsFile = Path.Combine(projectMkv3dDir, "__ENCODE_3D_MOVIE.avs");
         if (!File.Exists(avsFile))
         {
-            logger($"[AVS Patch] File not found: {avsFile}");
+            logger.Log($"[AVS Patch] File not found: {avsFile}");
             return false;
         }
         string content = File.ReadAllText(avsFile);
         string tweakLine = "Tweak(sat=1.1, cont=1.05)";
         if (content.Contains(tweakLine))
         {
-            logger("[AVS Patch] Tweak already exists in AVS file. Skipping.");
+            logger.Log("[AVS Patch] Tweak already exists in AVS file. Skipping.");
             return true;
         }
         string backupFile = avsFile + ".bak";
         File.Copy(avsFile, backupFile, overwrite: true);
-        logger($"[AVS Patch] Created backup at {Path.GetFileName(backupFile)}");
+        logger.Log($"[AVS Patch] Created backup at {Path.GetFileName(backupFile)}");
         string newContent = AvsEndRegex().Replace(content, $"{tweakLine}\r\nReturn(last)");
         File.WriteAllText(avsFile, newContent);
-        logger($"[AVS Patch] Injected '{tweakLine}' right before Return(last)!");
+        logger.Log($"[AVS Patch] Injected '{tweakLine}' right before Return(last)!");
         return true;
     }
 
     public void NeutralizePostProcessCmd(string projectMkv3dDir)
     {
-        foreach (string name in new[] { "__POSTPROCESS_3D.cmd", "_CUSTOM_POSTPROCESS_3D.cmd", "_POSTPROCESS_2D.cmd" })
+        foreach (string name in _postProcessFiles)
         {
             string targetFile = Path.Combine(projectMkv3dDir, name);
             if (!File.Exists(targetFile))
@@ -234,14 +238,14 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
             // BD3D puts "start "" ." and "pause" at the end of post-process scripts which pops
             // Explorer and blocks exit!
             File.WriteAllText(targetFile, "@echo off\r\nREM Neutralized Explorer popup and pause\r\nexit /B 0\r\n");
-            logger($"[PostProcess] Neutralized {Path.GetFileName(targetFile)} (disabled 'pause' and Explorer popups).");
+            logger.Log($"[PostProcess] Neutralized {Path.GetFileName(targetFile)} (disabled 'pause' and Explorer popups).");
         }
     }
 
     public bool UpdateMuxJson(string projectMkv3dDir, string? customEac3File, IReadOnlyList<string> companionFiles)
     {
         bool anyUpdated = false;
-        foreach (string targetName in new[] { "__MUX_3D_OPTIONS.json", "_CUSTOM_MUX_3D_OPTIONS.json" })
+        foreach (string targetName in _mux3DOptionsFiles)
         {
             string jsonPath = Path.Combine(projectMkv3dDir, targetName);
             if (!File.Exists(jsonPath))
@@ -255,6 +259,9 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
         }
         return anyUpdated;
     }
+
+    [GeneratedRegex(@"(?m)^Return\(last\)")]
+    private static partial Regex AvsEndRegex();
 
     private bool UpdateSingleMuxJson(string jsonPath, string projectMkv3dDir, string? customEac3File, IReadOnlyList<string> companionFiles)
     {
@@ -294,7 +301,7 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
                         startIndex -= 2;
                     }
                     int removeCount = dtsIndex - startIndex + 1;
-                    logger($"[Mux Options] Stripping original DTS track '{arguments[dtsIndex]}' and its switches from {Path.GetFileName(jsonPath)}.");
+                    logger.Log($"[Mux Options] Stripping original DTS track '{arguments[dtsIndex]}' and its switches from {Path.GetFileName(jsonPath)}.");
                     arguments.RemoveRange(startIndex, removeCount);
                 }
             }
@@ -322,7 +329,7 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
                 {
                     File.Copy(customEac3File, destEac3, overwrite: true);
                 }
-                logger($"[Mux Options] Injecting converted EAC3 audio: {Path.GetFileName(destEac3)}");
+                logger.Log($"[Mux Options] Injecting converted EAC3 audio: {Path.GetFileName(destEac3)}");
                 arguments.Add("--track-name");
                 arguments.Add("0:English (E-AC-3 5.1 640k)");
                 arguments.Add("--language");
@@ -350,7 +357,7 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
                 if (audioCandidates is [{ } primaryAudio, ..])
                 {
                     string ext = Path.GetExtension(primaryAudio).TrimStart('.').ToUpperInvariant();
-                    logger($"[Mux Options] Auto-recovered orphaned demuxed audio: {Path.GetFileName(primaryAudio)}");
+                    logger.Log($"[Mux Options] Auto-recovered orphaned demuxed audio: {Path.GetFileName(primaryAudio)}");
                     arguments.Add("--track-name");
                     arguments.Add($"0:English ({ext})");
                     arguments.Add("--language");
@@ -374,7 +381,7 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
                 {
                     File.Copy(companion, destCompanion, overwrite: true);
                 }
-                logger($"[Mux Options] Ingesting companion file into mux: {Path.GetFileName(destCompanion)}");
+                logger.Log($"[Mux Options] Ingesting companion file into mux: {Path.GetFileName(destCompanion)}");
                 if (ext is ".ec3" or ".ac3" or ".mka")
                 {
                     arguments.Add("--track-name");
@@ -418,16 +425,13 @@ public partial class OrchestratorPipeline(string ffmpegPath, Action<string> logg
             }
             string outputJson = JsonSerializer.Serialize(arguments, _writeOptions);
             File.WriteAllText(jsonPath, outputJson);
-            logger($"[Mux Options] Successfully updated {Path.GetFileName(jsonPath)} with audio and companion tracks!");
+            logger.Log($"[Mux Options] Successfully updated {Path.GetFileName(jsonPath)} with audio and companion tracks!");
             return true;
         }
         catch (Exception ex)
         {
-            logger($"[Mux Options] Error updating JSON options {Path.GetFileName(jsonPath)}: {ex.Message}");
+            logger.Log($"[Mux Options] Error updating JSON options {Path.GetFileName(jsonPath)}: {ex.Message}");
             return false;
         }
     }
-
-    [GeneratedRegex(@"(?m)^Return\(last\)")]
-    private static partial Regex AvsEndRegex();
 }

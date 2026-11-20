@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using System.Net.Http;
+using System.Threading;
 using System.Windows;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,16 +57,21 @@ public static class Program
             .Bind(settingsConfig, binder => binder.ErrorOnUnknownConfiguration = true)
             .PostConfigure(settings => settings.ExpandEnvironmentVariables())
             .ValidateOnStart();
+        // MovieDetector is captured by the singleton JobRunner, so its HttpClient lives for the whole session. The factory's
+        // handler rotation can't help a client that is never released, so it is switched off (infinite handler lifetime) and
+        // the handler itself retires pooled connections instead, which keeps DNS fresh.
         builder.Services
-            .AddHttpClient<MovieDetector>(client => client.Timeout = TimeSpan.FromSeconds(5));
+            .AddHttpClient<MovieDetector>(client => client.Timeout = TimeSpan.FromSeconds(5))
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+            .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
         builder.Services
             .AddSingleton<IValidateOptions<AppSettings>, AppSettingsValidator>()
             .AddSingleton(sp => sp.GetRequiredService<IOptions<AppSettings>>().Value)
             .AddSingleton<MainWindowViewModel>()
-            .AddSingleton(sp => new JobRunner(
-                sp.GetRequiredService<AppSettings>(),
-                sp.GetRequiredService<MovieDetector>(),
-                sp.GetRequiredService<MainWindowViewModel>().Log))
+            .AddSingleton<IMessageLogger>(sp => sp.GetRequiredService<MainWindowViewModel>())
+            .AddSingleton<MediaInspector>()
+            .AddSingleton<OrchestratorPipeline>()
+            .AddSingleton<JobRunner>()
             .AddSingleton<App>()
             .AddSingleton<MainWindow>()
             .AddSingleton<Func<MainWindow>>(sp => () => sp.GetRequiredService<MainWindow>());
