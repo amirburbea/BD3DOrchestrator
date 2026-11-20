@@ -267,13 +267,13 @@ public sealed class JobRunner(
             string escapedTitle = movieTitle.Replace("\"", "\\\"").Replace("[", "\\[").Replace("]", "\\]");
             string hook = $@"
 # BD3DOrchestrator Auto-Run Plugin Hook
-processHandle ::GetMkvWritingApplication {{mkvfile}} {{
+proc ::GetMkvWritingApplication {{mkvfile}} {{
     return ""MakeMKV v1.17.8 win(x64-release)""
 }}
 
 if {{[info commands ::orig_tk_messageBox] == """" && [info commands ::tk_messageBox] != """" && [info commands ::orig_tk_messageBox] != ""::tk_messageBox""}} {{
     rename ::tk_messageBox ::orig_tk_messageBox
-    processHandle ::tk_messageBox {{args}} {{
+    proc ::tk_messageBox {{args}} {{
         set str [string tolower [join $args "" ""]]
         if {{[string first ""retrycancel"" $str] != -1}} {{
             return ""cancel""
@@ -293,7 +293,7 @@ if {{[info commands ::orig_tk_messageBox] == """" && [info commands ::tk_message
 
 if {{[info commands ::orig_exec] == """" && [info commands ::exec] != """" && [info commands ::orig_exec] != ""::exec""}} {{
     rename ::exec ::orig_exec
-    processHandle ::exec {{args}} {{
+    proc ::exec {{args}} {{
         set str [join $args "" ""]
         if {{[string first ""cmd /c start"" $str] != -1}} {{
             return """"
