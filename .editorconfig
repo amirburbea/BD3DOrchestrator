@@ -1,6 +1,6 @@
 root = true
 
 # Matches .gitattributes: LF line endings, UTF-8 without a BOM.
-[*.{cs,csproj,slnx}]
+[*.{cs,csproj,slnx,xaml}]
 charset = utf-8
 end_of_line = lf

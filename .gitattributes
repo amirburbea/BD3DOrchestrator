@@ -3,11 +3,12 @@
 ###############################################################################
 * text=auto
 
-# C# sources, project and solution files are always LF in the working tree,
+# C# sources, XAML, project and solution files are always LF in the working tree,
 # whatever the platform or core.autocrlf says. (No-BOM is set in .editorconfig.)
 *.cs     text eol=lf
 *.csproj text eol=lf
 *.slnx   text eol=lf
+*.xaml   text eol=lf
 
 ###############################################################################
 # Set default behavior for command prompt diff.
