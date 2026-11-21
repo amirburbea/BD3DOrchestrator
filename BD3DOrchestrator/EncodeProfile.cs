@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -11,12 +13,21 @@ public interface IEncodeProfile
     string Hash { get; }
     string MkvTitleTemplate { get; }
     string OutputNameTemplate { get; }
-    IReadOnlyList<KeyValuePair<string, string>> Settings { get; }
+    /// <summary>BD3D2MK3D settings by name, in profile.json order. A name listed twice keeps its last value.</summary>
+    IReadOnlyDictionary<string, string> Settings { get; }
     string SourcePath { get; }
     /// <summary>
     /// Tcl script lines that force every profile setting (both ::config(...) and the live ::var).
     /// </summary>
     string TclBlock { get; }
+
+    /// <summary>
+    /// The x264 CRF this profile encodes at, or null when it doesn't encode x264 in CRF mode (then there is no CRF to adjust).
+    /// </summary>
+    decimal? Crf { get; }
+
+    /// <summary>The CRF for the "extra quality" option: one step below the profile's (lower CRF = higher quality), never below 0.</summary>
+    decimal? ExtraQualityCrf => this.Crf is { } crf ? Math.Max(0, crf - 1) : null;
 }
 
 /// <summary>
@@ -25,14 +36,16 @@ public interface IEncodeProfile
 /// </summary>
 public sealed class EncodeProfile : IEncodeProfile
 {
-    private readonly List<KeyValuePair<string, string>> _settings = [];
+    // Ordered only so TclBlock reads like profile.json; Tcl variable names are case-sensitive, hence Ordinal.
+    private readonly OrderedDictionary<string, string> _settings = [with(StringComparer.Ordinal)];
 
     public string Hash { get; }
     public string MkvTitleTemplate { get; } = "{title}";
     public string OutputNameTemplate { get; } = "{title}.3d.tab.mkv";
-    public IReadOnlyList<KeyValuePair<string, string>> Settings => this._settings;
+    public IReadOnlyDictionary<string, string> Settings => this._settings;
     public string SourcePath { get; }
     public string TclBlock { get; }
+    public decimal? Crf { get; }
 
     public EncodeProfile(AppSettings settings, IFileSystem fileSystem)
     {
@@ -61,18 +74,31 @@ public sealed class EncodeProfile : IEncodeProfile
                     JsonValueKind.Number => prop.Value.GetRawText(),
                     _ => prop.Value.GetString() ?? ""
                 };
-                this._settings.Add(new(prop.Name, value));
+                this._settings[prop.Name] = value; // last one wins, as it would in Tcl
             }
         }
-        // Hash only what affects output, so comments/whitespace edits don't change it.
+        // Hash only what affects output, so comments, whitespace and the order of the settings don't change it.
         StringBuilder canon = new();
         canon.Append(this.OutputNameTemplate).Append('\n').Append(this.MkvTitleTemplate).Append('\n');
-        foreach ((string key, string value) in this._settings)
+        foreach ((string key, string value) in this._settings.OrderBy(setting => setting.Key, StringComparer.Ordinal))
         {
             canon.Append(key).Append('=').Append(value).Append('\n');
         }
         this.Hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canon.ToString())))[..12].ToLowerInvariant();
         this.TclBlock = this.BuildTclBlock();
+        this.Crf = this.ReadCrf();
+    }
+
+    /// <summary>"18", "17.5": CRF values as x264 and the UI show them.</summary>
+    public static string FormatCrf(decimal crf) => crf.ToString("0.##", CultureInfo.InvariantCulture);
+
+    private decimal? ReadCrf()
+    {
+        if (this._settings.GetValueOrDefault("use_x265") == "1" || !"CRF".Equals(this._settings.GetValueOrDefault("x264mode"), StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+        return decimal.TryParse(this._settings.GetValueOrDefault("x264crf"), NumberStyles.Number, CultureInfo.InvariantCulture, out decimal crf) ? crf : null;
     }
 
     private string BuildTclBlock()

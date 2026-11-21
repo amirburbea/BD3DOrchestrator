@@ -36,8 +36,9 @@ public sealed class JobRunnerTests
     {
         private readonly HttpClient _httpClient;
 
-        public Harness(Func<HttpRequestMessage, HttpResponseMessage>? tmdb = null)
+        public Harness(Func<HttpRequestMessage, HttpResponseMessage>? tmdb = null, FakeEncodeProfile? profile = null)
         {
+            this.Profile = profile ?? ProfileWithCrf(18);
             this.Fs.AddDirectory(this.Settings.ProjectDirectory);
             this._httpClient = new(new FakeHttpMessageHandler(tmdb));
             FakeProcessRunner processRunner = new();
@@ -59,7 +60,7 @@ public sealed class JobRunnerTests
         public FakeFileSystem Fs { get; } = new();
         public FakeMessageLogger Logger { get; } = new();
         public FakeProcessManager Processes { get; } = new();
-        public FakeEncodeProfile Profile { get; } = new();
+        public FakeEncodeProfile Profile { get; }
         public AppSettings Settings { get; } = new()
         {
             ToolsetDirectory = @"C:\tools",
@@ -70,6 +71,31 @@ public sealed class JobRunnerTests
         public JobRunner Runner { get; }
 
         public void Dispose() => this._httpClient.Dispose();
+    }
+
+    /// <summary>What EncodeProfile.TclBlock emits for a profile's "x264crf".</summary>
+    private static string ProfileCrfBlock(string crf) => $"set ::config(x264crf) \"{crf}\"\nset ::x264crf \"{crf}\"\n";
+
+    private static FakeEncodeProfile ProfileWithCrf(decimal crf) => new()
+    {
+        Crf = crf,
+        TclBlock = ProfileCrfBlock(EncodeProfile.FormatCrf(crf))
+    };
+
+    /// <summary>Runs a job whose BD3D2MK3D exits at once into an existing project; returns the plugin.tcl it was given.</summary>
+    private static async Task<string> RunAndCaptureHookAsync(Harness h, Job job)
+    {
+        string? hook = null;
+        h.Processes.OnStartShell = (fileName, workingDirectory) =>
+        {
+            if (fileName == Bd3dExe)
+            {
+                hook = h.Fs.ReadAllText(Path.Combine(workingDirectory!, "plugin.tcl"));
+            }
+            return new ProcessHandle(101); // exits immediately
+        };
+        await h.Runner.RunAsync(job, CancellationToken.None);
+        return hook!;
     }
 
     private static Job LoadedJob(string title) => new()
@@ -168,6 +194,64 @@ public sealed class JobRunnerTests
         await Assert.That(hook!).Contains("proc ::exec {args} {");
         await Assert.That(hook!).Contains("""OpenMKV "M:/Movies/Hi.3d.mvc.mkv" """.TrimEnd());
         await Assert.That(hook!).Contains("""set ::moviename "Say \"Hi\" \[3D\]" """.TrimEnd());
+    }
+
+    [Test]
+    public async Task NewJob_HasExtraQualityOff()
+    {
+        await Assert.That(new Job().UseExtraQuality).IsFalse();
+    }
+
+    [Test]
+    public async Task RunAsync_ExtraQualityOff_LeavesProfileCrfAlone()
+    {
+        using Harness h = new();
+        h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
+
+        string hook = await RunAndCaptureHookAsync(h, LoadedJob("Up"));
+
+        await Assert.That(hook).Contains(ProfileCrfBlock("18"));
+        await Assert.That(hook).DoesNotContain("Per-movie override");
+        await Assert.That(h.Fs.ReadAllText(@"P:\Proj\Up\MKV3D\encode_profile.txt")).DoesNotContain("x264crf");
+    }
+
+    [Test]
+    [Arguments(18.0, "18", "17")]
+    [Arguments(20.0, "20", "19")]
+    [Arguments(18.5, "18.5", "17.5")]
+    public async Task RunAsync_ExtraQuality_SetsProfileCrfMinusOneAfterProfileBlock_AndRecordsIt(double profileCrf, string profileText, string expected)
+    {
+        using Harness h = new(profile: ProfileWithCrf((decimal)profileCrf));
+        h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
+        Job job = LoadedJob("Up");
+        job.UseExtraQuality = true;
+
+        string hook = await RunAndCaptureHookAsync(h, job);
+
+        // Tcl runs top to bottom, so the override must come after the profile's own x264crf lines.
+        int profileAt = hook.IndexOf(ProfileCrfBlock(profileText), StringComparison.Ordinal);
+        int overrideConfigAt = hook.IndexOf($"set ::config(x264crf) \"{expected}\"", StringComparison.Ordinal);
+        int overrideLiveAt = hook.IndexOf($"set ::x264crf \"{expected}\"", StringComparison.Ordinal);
+        await Assert.That(profileAt).IsGreaterThanOrEqualTo(0);
+        await Assert.That(overrideConfigAt).IsGreaterThan(profileAt);
+        await Assert.That(overrideLiveAt).IsGreaterThan(profileAt);
+        await Assert.That(h.Fs.ReadAllText(@"P:\Proj\Up\MKV3D\encode_profile.txt")).Contains($"x264crf={expected}");
+        await Assert.That(h.Logger.Messages).Contains($"[Profile] Extra quality: x264 CRF {profileText} -> {expected} for this movie.");
+    }
+
+    [Test]
+    public async Task RunAsync_ExtraQuality_ProfileWithoutCrf_IsIgnoredAndLogged()
+    {
+        using Harness h = new(profile: new FakeEncodeProfile { Crf = null });
+        h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
+        Job job = LoadedJob("Up");
+        job.UseExtraQuality = true;
+
+        string hook = await RunAndCaptureHookAsync(h, job);
+
+        await Assert.That(hook).DoesNotContain("Per-movie override");
+        await Assert.That(h.Fs.ReadAllText(@"P:\Proj\Up\MKV3D\encode_profile.txt")).DoesNotContain("x264crf");
+        await Assert.That(h.Logger.Messages).Contains("[Profile] Extra quality ignored: the profile does not encode x264 in CRF mode.");
     }
 
     [Test]

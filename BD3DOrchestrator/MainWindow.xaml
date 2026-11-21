@@ -64,15 +64,21 @@
                           Content="Auto-convert DTS audio to EAC3 5.1 (640k Gain-Safe Fold via FFmpeg)"/>
 
                 <CheckBox IsChecked="{Binding Job.ApplyAvsTweak}"
-                          Content="Inject OLED Contrast &amp; Saturation AVS Tweak: Tweak(sat=1.1, cont=1.05)"/>
+                          Content="Inject OLED Contrast &amp; Saturation AVS Tweak: Tweak(sat=1.1, cont=1.05)"
+                          ToolTip="Defaulted on older animation titles; later movies tend to be made for HDR and enabling could blow out contrast." />
 
                 <CheckBox IsChecked="{Binding Job.IngestCompanions}"
                           Content="Auto-ingest companion audio/subtitles (.mka, .mks, .ec3, .sup) into final MKV"/>
+
+                <CheckBox IsChecked="{Binding Job.UseExtraQuality}"
+                          IsEnabled="{Binding IsExtraQualityAvailable}"
+                          Content="{Binding ExtraQualityLabel}"
+                          ToolTip="One CRF step below the default; all other settings stay the same."/>
             </StackPanel>
         </Border>
 
         <!-- Log output: a read-only TextBox so lines can be selected and copied across rows; MainWindow caps its length.
-             Deliberately a fixed dark terminal in both light and dark mode, not theme-coloured. -->
+             Deliberately a fixed dark terminal in both light and dark mode, not theme-colored. -->
         <Border Grid.Row="3" Background="#0C0C0C" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,12" ClipToBounds="True">
             <TextBox x:Name="TxtLog" IsReadOnly="True" IsUndoEnabled="False" TextWrapping="NoWrap"
                      Background="Transparent" BorderThickness="0" Padding="8,6"

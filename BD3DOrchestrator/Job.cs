@@ -42,6 +42,16 @@ public sealed class Job : ObservableObject
         set => this.SetField(ref field, value);
     } = true;
 
+    /// <summary>
+    /// Encode one CRF step below the profile's (see <see cref="IEncodeProfile.ExtraQualityCrf"/>), for the rare film
+    /// worth the bigger file. Off by default; everything else in the profile still applies.
+    /// </summary>
+    public bool UseExtraQuality
+    {
+        get;
+        set => this.SetField(ref field, value);
+    }
+
     /// <summary>Result of inspecting the input file; null until something has been loaded.</summary>
     public MediaInspectionResult? Inspection { get; set; }
 

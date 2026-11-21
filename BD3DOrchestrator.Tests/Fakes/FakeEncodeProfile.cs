@@ -7,7 +7,8 @@ public sealed class FakeEncodeProfile : IEncodeProfile
     public string Hash { get; init; } = "abc123def456";
     public string MkvTitleTemplate { get; init; } = "{title}";
     public string OutputNameTemplate { get; init; } = "{title}.3d.tab.mkv";
-    public IReadOnlyList<KeyValuePair<string, string>> Settings { get; init; } = [];
+    public IReadOnlyDictionary<string, string> Settings { get; init; } = new Dictionary<string, string>();
     public string SourcePath { get; init; } = @"C:\app\profile.json";
     public string TclBlock { get; init; } = "";
+    public decimal? Crf { get; init; } = 18;
 }

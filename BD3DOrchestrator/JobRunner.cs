@@ -84,12 +84,25 @@ public sealed class JobRunner(
         bool applyAvsTweak = job.ApplyAvsTweak;
         bool ingestCompanions = job.IngestCompanions;
         logger.Log($"[Profile] {profile.SourcePath} (hash {profile.Hash}, {profile.Settings.Count} settings) -> output '{profile.OutputNameTemplate}'");
+        decimal? crfOverride = null;
+        if (job.UseExtraQuality)
+        {
+            if (profile is { Crf: { } profileCrf, ExtraQualityCrf: { } extraQualityCrf })
+            {
+                crfOverride = extraQualityCrf;
+                logger.Log($"[Profile] Extra quality: x264 CRF {EncodeProfile.FormatCrf(profileCrf)} -> {EncodeProfile.FormatCrf(extraQualityCrf)} for this movie.");
+            }
+            else
+            {
+                logger.Log("[Profile] Extra quality ignored: the profile does not encode x264 in CRF mode.");
+            }
+        }
         string? resolvedProject = null;
         // Create an isolated temp job sandbox so BD3D2MK3D's original install folder is never touched or modified.
         // This guarantees complete isolation between multiple parallel instances or manual runs.
         string jobTempDir = Path.Combine(Path.GetTempPath(), "BD3DOrchestrator", $"Job_{Guid.NewGuid():N}");
         fileSystem.CreateDirectory(jobTempDir);
-        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse);
+        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse, crfOverride);
         ProcessHandle? bd3dProcess = null;
         try
         {
@@ -216,7 +229,12 @@ public sealed class JobRunner(
         pipeline.ApplyOutputNaming(projectFolder, titleToUse);
         try
         {
-            fileSystem.WriteAllText(Path.Combine(projectFolder, "encode_profile.txt"), $"hash={profile.Hash}{Environment.NewLine}source={profile.SourcePath}{Environment.NewLine}");
+            string record = $"hash={profile.Hash}{Environment.NewLine}source={profile.SourcePath}{Environment.NewLine}";
+            if (crfOverride is { } recordedCrf)
+            {
+                record += $"x264crf={EncodeProfile.FormatCrf(recordedCrf)}{Environment.NewLine}";
+            }
+            fileSystem.WriteAllText(Path.Combine(projectFolder, "encode_profile.txt"), record);
         }
         catch { /* Ignore */ }
         // AVS Script OLED contrast/saturation injection
@@ -256,10 +274,14 @@ public sealed class JobRunner(
         }
     }
 
-    private void CreatePluginTclHook(string jobTempDir, string mkvPath, string movieTitle)
+    private void CreatePluginTclHook(string jobTempDir, string mkvPath, string movieTitle, decimal? crfOverride)
     {
         try
         {
+            // Set after the profile block, so it wins over the profile's x264crf (both the saved and the live value).
+            string jobOverrides = crfOverride is { } crf
+                ? $"# --- Per-movie override ---{Environment.NewLine}set ::config(x264crf) {TclMethods.Quote(EncodeProfile.FormatCrf(crf))}{Environment.NewLine}set ::x264crf {TclMethods.Quote(EncodeProfile.FormatCrf(crf))}{Environment.NewLine}"
+                : "";
             string normalizedMkv = mkvPath.Replace("\\", "/");
             string projQ = TclMethods.Quote(settings.ProjectDirectory.Replace("\\", "/"));
             string outQ = TclMethods.Quote(settings.OutputDirectory.Replace("\\", "/"));
@@ -307,6 +329,7 @@ set ::endaction ""close command prompt""
 
 # --- Shared encoding profile (hash {profile.Hash}) ---
 {profile.TclBlock}
+{jobOverrides}
 # --- Per-machine paths ---
 set ::projdir {projQ}
 catch {{file mkdir $::projdir}}

@@ -139,7 +139,7 @@ static class IconGenerator
         double[] radii = [h * 0.16, h * 0.16, h * 0.38, h * 0.38];
         if (mirrored)
         {
-            // Flip horizontally about the lens centre so the taper faces the nose.
+            // Flip horizontally about the lens center so the taper faces the nose.
             for (int i = 0; i < points.Length; i++)
             {
                 points[i] = new Point(2 * x + w - points[i].X, points[i].Y);
@@ -226,7 +226,7 @@ static class IconGenerator
             writer.Write((byte)(size >= 256 ? 0 : size));
             writer.Write((byte)0);   // palette size
             writer.Write((byte)0);   // reserved
-            writer.Write((ushort)1); // colour planes
+            writer.Write((ushort)1); // color planes
             writer.Write((ushort)32);
             writer.Write(png.Length);
             writer.Write(offset);
