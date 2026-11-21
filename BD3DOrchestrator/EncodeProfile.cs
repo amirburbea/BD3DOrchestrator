@@ -26,8 +26,19 @@ public interface IEncodeProfile
     /// </summary>
     decimal? Crf { get; }
 
-    /// <summary>The CRF for the "extra quality" option: one step below the profile's (lower CRF = higher quality), never below 0.</summary>
-    decimal? ExtraQualityCrf => this.Crf is { } crf ? Math.Max(0, crf - 1) : null;
+    /// <summary>
+    /// The CRF for the "extra quality" option: one step below the profile's (lower CRF = higher quality), never below 0.
+    /// Null when there is nothing lower to go to (see <see cref="ExtraQualityUnavailableReason"/>).
+    /// </summary>
+    decimal? ExtraQualityCrf => this.Crf is { } crf && crf > 0 ? Math.Max(0, crf - 1) : null;
+
+    /// <summary>Why the "extra quality" option can't be used with this profile, or null when it can.</summary>
+    string? ExtraQualityUnavailableReason => this.Crf switch
+    {
+        null => "the profile does not encode x264 in CRF mode",
+        <= 0 => "the profile is already at CRF 0, the lowest",
+        _ => null
+    };
 }
 
 /// <summary>

@@ -21,10 +21,10 @@ public sealed class MainWindowViewModel(IEncodeProfile profile) : ObservableObje
         set => this.SetField(ref field, value);
     } = "🚀 Auto-Run Pipeline (Demux ➔ Patch AVS ➔ Ingest Audio ➔ Encode & Mux)";
 
-    /// <summary>Only a profile that encodes x264 in CRF mode has a CRF to lower.</summary>
+    /// <summary>Only a profile with an x264 CRF above 0 has a CRF to lower.</summary>
     public bool IsExtraQualityAvailable => profile.ExtraQualityCrf is not null;
 
     public string ExtraQualityLabel => profile is { Crf: { } crf, ExtraQualityCrf: { } extraQualityCrf }
         ? $"Extra quality: encode at CRF {EncodeProfile.FormatCrf(extraQualityCrf)} instead of {EncodeProfile.FormatCrf(crf)} (bigger file)"
-        : "Extra quality (unavailable: the profile does not encode x264 in CRF mode)";
+        : $"Extra quality (unavailable: {profile.ExtraQualityUnavailableReason})";
 }

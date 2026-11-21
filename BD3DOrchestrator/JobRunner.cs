@@ -94,7 +94,7 @@ public sealed class JobRunner(
             }
             else
             {
-                logger.Log("[Profile] Extra quality ignored: the profile does not encode x264 in CRF mode.");
+                logger.Log($"[Profile] Extra quality ignored: {profile.ExtraQualityUnavailableReason}.");
             }
         }
         string? resolvedProject = null;

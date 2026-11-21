@@ -240,9 +240,11 @@ public sealed class JobRunnerTests
     }
 
     [Test]
-    public async Task RunAsync_ExtraQuality_ProfileWithoutCrf_IsIgnoredAndLogged()
+    [Arguments(null, "[Profile] Extra quality ignored: the profile does not encode x264 in CRF mode.")]
+    [Arguments(0.0, "[Profile] Extra quality ignored: the profile is already at CRF 0, the lowest.")]
+    public async Task RunAsync_ExtraQuality_NoLowerCrf_IsIgnoredAndLogged(double? crf, string expectedLog)
     {
-        using Harness h = new(profile: new FakeEncodeProfile { Crf = null });
+        using Harness h = new(profile: new FakeEncodeProfile { Crf = (decimal?)crf });
         h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
         Job job = LoadedJob("Up");
         job.UseExtraQuality = true;
@@ -251,7 +253,7 @@ public sealed class JobRunnerTests
 
         await Assert.That(hook).DoesNotContain("Per-movie override");
         await Assert.That(h.Fs.ReadAllText(@"P:\Proj\Up\MKV3D\encode_profile.txt")).DoesNotContain("x264crf");
-        await Assert.That(h.Logger.Messages).Contains("[Profile] Extra quality ignored: the profile does not encode x264 in CRF mode.");
+        await Assert.That(h.Logger.Messages).Contains(expectedLog);
     }
 
     [Test]

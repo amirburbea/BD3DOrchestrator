@@ -123,6 +123,30 @@ public sealed class EncodeProfileTests
     }
 
     [Test]
+    [Arguments(18.0, 17.0)]
+    [Arguments(1.5, 0.5)]
+    [Arguments(1.0, 0.0)]
+    [Arguments(0.5, 0.0)] // clamped, never negative
+    public async Task ExtraQualityCrf_IsOneLower_ClampedAtZero(double crf, double expected)
+    {
+        IEncodeProfile profile = new FakeEncodeProfile { Crf = (decimal)crf };
+
+        await Assert.That(profile.ExtraQualityCrf).IsEqualTo((decimal)expected);
+        await Assert.That(profile.ExtraQualityUnavailableReason).IsNull();
+    }
+
+    [Test]
+    [Arguments(null, "the profile does not encode x264 in CRF mode")]
+    [Arguments(0.0, "the profile is already at CRF 0, the lowest")]
+    public async Task ExtraQualityCrf_IsNull_WhenThereIsNoLowerCrf(double? crf, string expectedReason)
+    {
+        IEncodeProfile profile = new FakeEncodeProfile { Crf = (decimal?)crf };
+
+        await Assert.That(profile.ExtraQualityCrf).IsNull();
+        await Assert.That(profile.ExtraQualityUnavailableReason).IsEqualTo(expectedReason);
+    }
+
+    [Test]
     [Arguments("""{"Settings":{"x264crf":18}}""")]                                        // mode not set
     [Arguments("""{"Settings":{"x264mode":"2-pass","x264crf":18}}""")]                    // not CRF mode
     [Arguments("""{"Settings":{"x264mode":"CRF","x264crf":18,"use_x265":1}}""")]          // x265, not x264
