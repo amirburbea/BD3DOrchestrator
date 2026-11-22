@@ -40,6 +40,16 @@ public sealed class Job : ObservableObject
         set => this.SetField(ref field, value);
     }
 
+    /// <summary>
+    /// Uncheck all subtitle streams in BD3D2MK3D so it skips demuxing/converting them to 3D
+    /// (useful when redoing an encode and muxing PGS files from a previous run).
+    /// </summary>
+    public bool SkipSubtitles
+    {
+        get;
+        set => this.SetField(ref field, value);
+    }
+
     /// <summary>Result of inspecting the input file; null until something has been loaded.</summary>
     public MediaInspectionResult? Inspection { get; set; }
 

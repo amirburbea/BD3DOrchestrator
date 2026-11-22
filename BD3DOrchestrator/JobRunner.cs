@@ -81,6 +81,7 @@ public sealed class JobRunner(
         // Snapshot: later edits to the job (or a new job replacing it) can't change a run in progress.
         string titleToUse = job.EffectiveTitle;
         bool applyAvsTweak = job.ApplyAvsTweak;
+        bool skipSubtitles = job.SkipSubtitles;
         logger.Log($"[Profile] {profile.SourcePath} (hash {profile.Hash}, {profile.Settings.Count} settings) -> output '{profile.OutputNameTemplate}'");
         decimal? crfOverride = null;
         if (job.UseExtraQuality)
@@ -95,12 +96,16 @@ public sealed class JobRunner(
                 logger.Log($"[Profile] Extra quality ignored: {profile.ExtraQualityUnavailableReason}.");
             }
         }
+        if (skipSubtitles)
+        {
+            logger.Log("[Subtitles] Skip subtitles enabled: unchecking all subtitle streams in BD3D2MK3D.");
+        }
         string? resolvedProject = null;
         // Create an isolated temp job sandbox so BD3D2MK3D's original install folder is never touched or modified.
         // This guarantees complete isolation between multiple parallel instances or manual runs.
         string jobTempDir = Path.Combine(Path.GetTempPath(), "BD3DOrchestrator", $"Job_{Guid.NewGuid():N}");
         fileSystem.CreateDirectory(jobTempDir);
-        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse, crfOverride);
+        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse, crfOverride, skipSubtitles);
         ProcessHandle? bd3dProcess = null;
         try
         {
@@ -269,13 +274,23 @@ public sealed class JobRunner(
         }
     }
 
-    private void CreatePluginTclHook(string jobTempDir, string mkvPath, string movieTitle, decimal? crfOverride)
+    private void CreatePluginTclHook(string jobTempDir, string mkvPath, string movieTitle, decimal? crfOverride, bool skipSubtitles)
     {
         try
         {
             // Set after the profile block, so it wins over the profile's x264crf (both the saved and the live value).
             string jobOverrides = crfOverride is { } crf
                 ? $"# --- Per-movie override ---{Environment.NewLine}set ::config(x264crf) {TclMethods.Quote(EncodeProfile.FormatCrf(crf))}{Environment.NewLine}set ::x264crf {TclMethods.Quote(EncodeProfile.FormatCrf(crf))}{Environment.NewLine}"
+                : "";
+            string skipSubtitlesBlock = skipSubtitles
+                ? """
+                        if {[info exists ::first_subtitle_entryn] && [info exists ::demux(0)]} {
+                            for {set i $::first_subtitle_entryn} {$i <= $::demux(0)} {incr i} {
+                                set ::demux($i) 0
+                            }
+                        }
+                        set ::default_sub -1
+                """ + Environment.NewLine
                 : "";
             string normalizedMkv = mkvPath.Replace("\\", "/");
             string projQ = TclMethods.Quote(settings.ProjectDirectory.Replace("\\", "/"));
@@ -346,7 +361,7 @@ after 150 {{
     update
     after 400 {{
         set ::moviename ""{escapedTitle}""
-        GenerateAvs
+{skipSubtitlesBlock}        GenerateAvs
         catch {{
             set fh [open [file join [pwd] resolved.txt] w]
             puts $fh [file nativename [file join $::projdir [string map $::ILLEGALCHARSMAP $::moviename] MKV3D]]

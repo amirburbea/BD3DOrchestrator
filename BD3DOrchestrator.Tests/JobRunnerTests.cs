@@ -201,6 +201,44 @@ public sealed class JobRunnerTests
     }
 
     [Test]
+    public async Task NewJob_HasSkipSubtitlesOff()
+    {
+        await Assert.That(new Job().SkipSubtitles).IsFalse();
+    }
+
+    [Test]
+    public async Task RunAsync_SkipSubtitlesOff_DoesNotUncheckSubtitles()
+    {
+        using Harness h = new();
+        h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
+
+        string hook = await RunAndCaptureHookAsync(h, LoadedJob("Up"));
+
+        await Assert.That(hook).DoesNotContain("::first_subtitle_entryn");
+    }
+
+    [Test]
+    public async Task RunAsync_SkipSubtitlesOn_UnchecksAllSubtitlesBeforeGenerateAvs()
+    {
+        using Harness h = new();
+        h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
+        Job job = LoadedJob("Up");
+        job.SkipSubtitles = true;
+
+        string hook = await RunAndCaptureHookAsync(h, job);
+
+        int openAt = hook.IndexOf("OpenMKV ", StringComparison.Ordinal);
+        int uncheckAt = hook.IndexOf("set ::demux($i) 0", StringComparison.Ordinal);
+        int generateAt = hook.IndexOf("GenerateAvs", StringComparison.Ordinal);
+        await Assert.That(openAt).IsGreaterThanOrEqualTo(0);
+        await Assert.That(uncheckAt).IsGreaterThan(openAt);
+        await Assert.That(generateAt).IsGreaterThan(uncheckAt);
+        await Assert.That(hook).Contains("::first_subtitle_entryn");
+        await Assert.That(hook).Contains("set ::default_sub -1");
+        await Assert.That(h.Logger.Messages).Contains("[Subtitles] Skip subtitles enabled: unchecking all subtitle streams in BD3D2MK3D.");
+    }
+
+    [Test]
     public async Task RunAsync_ExtraQualityOff_LeavesProfileCrfAlone()
     {
         using Harness h = new();

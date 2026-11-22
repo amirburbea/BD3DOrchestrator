@@ -64,6 +64,9 @@
                           IsEnabled="{Binding IsExtraQualityAvailable}"
                           Content="{Binding ExtraQualityLabel}"
                           ToolTip="One CRF step below the default; all other settings stay the same."/>
+                <CheckBox IsChecked="{Binding Job.SkipSubtitles}"
+                          Content="Skip subtitles in BD3D2MK3D (uncheck all subtitle streams)"
+                          ToolTip="Skips subtitle demuxing and 3D conversion; useful when redoing a movie and muxing PGS files from a previous run."/>
             </StackPanel>
         </Border>
         <!-- Log output: a read-only TextBox so lines can be selected and copied across rows; MainWindow caps its length.
