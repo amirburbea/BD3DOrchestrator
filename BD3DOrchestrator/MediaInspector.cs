@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -30,9 +29,7 @@ public partial class MediaInspector(AppSettings settings, IFileSystem fileSystem
             targetMkv = inputPath;
             folder = Path.GetDirectoryName(inputPath) ?? "";
         }
-        (string title, int year) = MovieDetector.ParseTitleAndYear(
-            !string.IsNullOrEmpty(targetMkv) ? Path.GetFileName(targetMkv) : Path.GetFileName(folder)
-        );
+        (string title, int year) = MovieDetector.ParseTitleAndYear(Path.GetFileName(string.IsNullOrEmpty(targetMkv) ? folder : targetMkv));
         MediaInspectionResult result = new()
         {
             MkvPath = targetMkv,
@@ -120,7 +117,7 @@ public partial class MediaInspector(AppSettings settings, IFileSystem fileSystem
         {
             foreach (string file in fileSystem.GetFiles(directory, $"{title}*"))
             {
-                if (!file.Equals(targetMkv, StringComparison.OrdinalIgnoreCase) && CompanionFilesRegex().IsMatch(file))
+                if (!file.Equals(targetMkv, StringComparison.Ordinal) && Path.GetExtension(file) is ".mka" or ".mks" or ".ec3" or ".ac3" or ".sup" or ".srt" or ".ass")
                 {
                     foundFiles.Add(file);
                 }
@@ -130,7 +127,4 @@ public partial class MediaInspector(AppSettings settings, IFileSystem fileSystem
         {
         }
     }
-
-    [GeneratedRegex(@"\.(mka|mks|ec3|ac3|sup|srt|ass)$", RegexOptions.IgnoreCase, "en-US")]
-    private static partial Regex CompanionFilesRegex();
 }

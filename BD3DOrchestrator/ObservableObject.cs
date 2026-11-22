@@ -8,19 +8,14 @@ public abstract class ObservableObject : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+    protected bool SetField<TValue>(ref TValue field, TValue value, [CallerMemberName] string? propertyName = null)
     {
-        this.PropertyChanged?.Invoke(this, new(propertyName));
-    }
-
-    protected bool SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
-    {
-        if (EqualityComparer<T>.Default.Equals(field, value))
+        if (EqualityComparer<TValue>.Default.Equals(field, value))
         {
             return false;
         }
         field = value;
-        this.OnPropertyChanged(propertyName);
+        this.PropertyChanged?.Invoke(this, new(propertyName));
         return true;
     }
 }

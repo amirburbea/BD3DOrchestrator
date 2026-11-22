@@ -4,19 +4,16 @@
         xmlns:local="clr-namespace:BD3DOrchestrator"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        Title="BD3D2MK3D Orchestrator &amp; Assistant (All-in-One)" Height="660" Width="800"
-        Icon="app.ico"
-        WindowStartupLocation="CenterScreen"
+        Title="BD3D2MK3D Orchestrator" Height="660" Width="800"
+        Icon="app.ico" WindowStartupLocation="CenterScreen"
         AllowDrop="True" Drop="Window_Drop" DragOver="Window_DragOver"
         mc:Ignorable="d" d:DataContext="{d:DesignInstance {x:Type local:MainWindowViewModel}}">
-
     <Window.Resources>
         <local:NegatedBooleanConverter x:Key="NegatedBooleanConverter" />
         <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
             <Setter Property="Margin" Value="0,4,0,4"/>
         </Style>
     </Window.Resources>
-
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -25,7 +22,6 @@
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-
         <!-- Drop Zone Header -->
         <Grid Grid.Row="0" Margin="0,0,0,12">
             <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="14">
@@ -36,41 +32,40 @@
             </Border>
             <Rectangle Stroke="{DynamicResource ControlStrongStrokeColorDefaultBrush}" StrokeThickness="1.5" StrokeDashArray="5 3" RadiusX="8" RadiusY="8" IsHitTestVisible="False"/>
         </Grid>
-
         <!-- Movie Details & Auto-Detection Info -->
         <Border Grid.Row="1" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
             <Grid>
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition />
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
-                <StackPanel Grid.Column="0" IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}">
-                    <DockPanel LastChildFill="True">
-                        <TextBlock Text="Movie Title: " FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
-                        <TextBox Text="{Binding Job.MovieTitle, UpdateSourceTrigger=PropertyChanged}" FontSize="14" FontWeight="SemiBold" Margin="4,0,10,0"/>
-                    </DockPanel>
-                    <TextBlock Text="{Binding Job.DetectionReason}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,0"/>
-                </StackPanel>
-                <Button Grid.Column="1" Content="Browse..." Click="BtnBrowse_Click" Padding="16,8" VerticalAlignment="Center" IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}"/>
+                <Grid.RowDefinitions>
+                    <RowDefinition />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+                <DockPanel LastChildFill="True">
+                    <TextBlock Text="Movie Title: " FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
+                    <TextBox Text="{Binding Job.MovieTitle, UpdateSourceTrigger=PropertyChanged}"
+                             FontSize="14" FontWeight="SemiBold" Margin="4,0,10,0"
+                             IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}"/>
+                </DockPanel>
+                <TextBlock Grid.Row="1" Text="{Binding Job.DetectionReason}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,0"/>
+                <Button Grid.Column="1" Grid.RowSpan="2" Content="Browse..." Click="BtnBrowse_Click" VerticalAlignment="Center" IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}"/>
             </Grid>
         </Border>
-
         <!-- Configuration Options -->
         <Border Grid.Row="2" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
             <StackPanel IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}">
                 <TextBlock Text="Automated Pipeline Settings" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6"/>
-
                 <CheckBox IsChecked="{Binding Job.ApplyAvsTweak}"
                           Content="Inject OLED Contrast &amp; Saturation AVS Tweak: Tweak(sat=1.1, cont=1.05)"
                           ToolTip="Defaulted on older animation titles; later movies tend to be made for HDR and enabling could blow out contrast." />
-
                 <CheckBox IsChecked="{Binding Job.UseExtraQuality}"
                           IsEnabled="{Binding IsExtraQualityAvailable}"
                           Content="{Binding ExtraQualityLabel}"
                           ToolTip="One CRF step below the default; all other settings stay the same."/>
             </StackPanel>
         </Border>
-
         <!-- Log output: a read-only TextBox so lines can be selected and copied across rows; MainWindow caps its length.
              Deliberately a fixed dark terminal in both light and dark mode, not theme-colored. -->
         <Border Grid.Row="3" Background="#0C0C0C" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,12" ClipToBounds="True">
@@ -170,7 +165,6 @@
                 </TextBox.Resources>
             </TextBox>
         </Border>
-
         <!-- Single Action Button -->
         <Grid Grid.Row="4">
             <Button Content="{Binding ActionButtonText}"

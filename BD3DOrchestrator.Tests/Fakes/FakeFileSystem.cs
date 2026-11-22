@@ -113,7 +113,7 @@ public sealed class FakeFileSystem : IFileSystem
         this._directories.Remove(normalized);
     }
 
-    public string[] GetFiles(string path, string? searchPattern = null)
+    public string[] GetFiles(string path, string searchPattern = "*")
     {
         string normalized = Normalize(path);
         if (!this._directories.ContainsKey(normalized))
@@ -124,7 +124,7 @@ public sealed class FakeFileSystem : IFileSystem
         [
             .. this._files.Keys.Where(f =>
                 string.Equals(Normalize(Path.GetDirectoryName(f) ?? ""), normalized, StringComparison.OrdinalIgnoreCase) &&
-                (searchPattern is null || FileSystemName.MatchesSimpleExpression(searchPattern, Path.GetFileName(f), ignoreCase: true)))
+                FileSystemName.MatchesSimpleExpression(searchPattern, Path.GetFileName(f), ignoreCase: true))
         ];
     }
 
