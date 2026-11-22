@@ -92,7 +92,7 @@ public sealed class JobRunnerTests
             {
                 hook = h.Fs.ReadAllText(Path.Combine(workingDirectory!, "plugin.tcl"));
             }
-            return new ProcessHandle(101); // exits immediately
+            return new(101); // exits immediately
         };
         await h.Runner.RunAsync(job, CancellationToken.None);
         return hook!;
@@ -101,9 +101,7 @@ public sealed class JobRunnerTests
     private static Job LoadedJob(string title) => new()
     {
         MovieTitle = title,
-        ConvertDtsToEac3 = false,
         ApplyAvsTweak = false,
-        IngestCompanions = false,
         Inspection = new() { MkvPath = $@"M:\Movies\{PathMethods.SanitizeFileName(title)}.3d.mvc.mkv", MovieTitle = title }
     };
 

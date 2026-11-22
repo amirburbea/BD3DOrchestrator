@@ -60,15 +60,9 @@
             <StackPanel IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}">
                 <TextBlock Text="Automated Pipeline Settings" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6"/>
 
-                <CheckBox IsChecked="{Binding Job.ConvertDtsToEac3}"
-                          Content="Auto-convert DTS audio to EAC3 5.1 (640k Gain-Safe Fold via FFmpeg)"/>
-
                 <CheckBox IsChecked="{Binding Job.ApplyAvsTweak}"
                           Content="Inject OLED Contrast &amp; Saturation AVS Tweak: Tweak(sat=1.1, cont=1.05)"
                           ToolTip="Defaulted on older animation titles; later movies tend to be made for HDR and enabling could blow out contrast." />
-
-                <CheckBox IsChecked="{Binding Job.IngestCompanions}"
-                          Content="Auto-ingest companion audio/subtitles (.mka, .mks, .ec3, .sup) into final MKV"/>
 
                 <CheckBox IsChecked="{Binding Job.UseExtraQuality}"
                           IsEnabled="{Binding IsExtraQualityAvailable}"

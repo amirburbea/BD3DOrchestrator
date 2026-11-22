@@ -80,9 +80,7 @@ public sealed class JobRunner(
         }
         // Snapshot: later edits to the job (or a new job replacing it) can't change a run in progress.
         string titleToUse = job.EffectiveTitle;
-        bool convertDts = job.ConvertDtsToEac3;
         bool applyAvsTweak = job.ApplyAvsTweak;
-        bool ingestCompanions = job.IngestCompanions;
         logger.Log($"[Profile] {profile.SourcePath} (hash {profile.Hash}, {profile.Settings.Count} settings) -> output '{profile.OutputNameTemplate}'");
         decimal? crfOverride = null;
         if (job.UseExtraQuality)
@@ -214,7 +212,7 @@ public sealed class JobRunner(
         logger.Log($"[Step 2] Ingesting Audio & Patching Project in: {projectFolder}");
         // Convert audio if DTS detected
         string? customEac3 = null;
-        if (convertDts && inspection.HasDtsAudio)
+        if (inspection.HasDtsAudio)
         {
             if (pipeline.FindDemuxedDtsFile(projectFolder) is not { } localDts)
             {
@@ -245,10 +243,7 @@ public sealed class JobRunner(
         // Neutralize pause and start "" in __POSTPROCESS_3D.cmd
         pipeline.NeutralizePostProcessCmd(projectFolder);
         // Update JSON mux options with companion files & EAC3
-        if (ingestCompanions)
-        {
-            pipeline.UpdateMuxJson(projectFolder, customEac3, inspection.CompanionFiles);
-        }
+        pipeline.UpdateMuxJson(projectFolder, customEac3, inspection.CompanionFiles);
         // 3. Start Encoding & Muxing
         logger.Log("[Step 3] Launching background x264/x265 encode and final MKV mux...");
         string launcherCmd = Path.Combine(projectFolder, "__ENCODE_3D_LAUNCHER.cmd");

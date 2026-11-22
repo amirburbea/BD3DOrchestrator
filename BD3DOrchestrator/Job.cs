@@ -24,23 +24,11 @@ public sealed class Job : ObservableObject
         set => this.SetField(ref field, value);
     } = "Detection: Waiting for file...";
 
-    public bool ConvertDtsToEac3
-    {
-        get;
-        set => this.SetField(ref field, value);
-    } = true;
-
     public bool ApplyAvsTweak
     {
         get;
         set => this.SetField(ref field, value);
     }
-
-    public bool IngestCompanions
-    {
-        get;
-        set => this.SetField(ref field, value);
-    } = true;
 
     /// <summary>
     /// Encode one CRF step below the profile's (see <see cref="IEncodeProfile.ExtraQualityCrf"/>), for the rare film

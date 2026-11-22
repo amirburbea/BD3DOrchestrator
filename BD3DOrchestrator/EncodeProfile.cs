@@ -30,7 +30,7 @@ public interface IEncodeProfile
     /// The CRF for the "extra quality" option: one step below the profile's (lower CRF = higher quality), never below 0.
     /// Null when there is nothing lower to go to (see <see cref="ExtraQualityUnavailableReason"/>).
     /// </summary>
-    decimal? ExtraQualityCrf => this.Crf is { } crf && crf > 0 ? Math.Max(0, crf - 1) : null;
+    decimal? ExtraQualityCrf => this.Crf is { } crf and > 0 ? Math.Max(0, crf - 1) : null;
 
     /// <summary>Why the "extra quality" option can't be used with this profile, or null when it can.</summary>
     string? ExtraQualityUnavailableReason => this.Crf switch
