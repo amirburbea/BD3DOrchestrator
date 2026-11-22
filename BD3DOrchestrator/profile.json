@@ -30,7 +30,7 @@
     "x264BDcompat": 0,
     "x264mode": "CRF",
     "x264crf": 18,
-    "x264options": "--vbv-bufsize 30000 --vbv-maxrate 40000 --ref 4 --bframes 8 --b-adapt 2 --me umh --merange 24 --subme 9 --no-fast-pskip --no-dct-decimate --deblock -3:-3 --aq-mode 1 --aq-strength 0.70 --no-mbtree --qcomp 0.70 --psy-rd 1.00:0.00 --chroma-qp-offset -2",
+    "x264options": "--vbv-bufsize 30000 --vbv-maxrate 40000 --ref 4 --bframes 6 --b-adapt 1 --me umh --merange 24 --subme 8 --no-dct-decimate --deblock -3:-3 --aq-mode 1 --aq-strength 0.70 --no-mbtree --qcomp 0.70 --psy-rd 1.00:0.00 --chroma-qp-offset -2",
     "color_depth_x264": "8 bits",
     "encoderTags": 1,
     "muxtomkv": 1,
