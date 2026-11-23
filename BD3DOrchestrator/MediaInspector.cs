@@ -84,6 +84,21 @@ public partial class MediaInspector(AppSettings settings, IFileSystem fileSystem
                     {
                         string type = track.TryGetProperty("type", out JsonElement tElem) ? (tElem.GetString() ?? "") : "";
                         string codec = track.TryGetProperty("codec", out JsonElement cElem) ? (cElem.GetString() ?? "") : "";
+                        if (type.Equals("subtitles", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string codecId = track.TryGetProperty("properties", out JsonElement props) &&
+                                             props.TryGetProperty("codec_id", out JsonElement cidElem)
+                                ? (cidElem.GetString() ?? "")
+                                : "";
+                            if ((codecId.Equals("S_TEXT/UTF8", StringComparison.OrdinalIgnoreCase) ||
+                                 codec.Contains("SRT", StringComparison.OrdinalIgnoreCase)) &&
+                                track.TryGetProperty("id", out JsonElement idElem) &&
+                                idElem.TryGetInt32(out int trackId))
+                            {
+                                result.EmbeddedSrtTrackIds.Add(trackId);
+                            }
+                            continue;
+                        }
                         if (!type.Equals("audio", StringComparison.OrdinalIgnoreCase))
                         {
                             continue;

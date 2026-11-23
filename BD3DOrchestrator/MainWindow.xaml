@@ -72,7 +72,7 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Steal PGS Subtitles from:" VerticalAlignment="Center" Margin="0,0,8,0"
+                    <TextBlock Grid.Column="0" Text="Steal Subtitles from:" VerticalAlignment="Center" Margin="0,0,8,0"
                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                ToolTip="Select a previously encoded .mkv or .mks file. BD3D2MK3D will skip subtitle conversion and mux the donor's subtitle tracks instead."/>
                     <TextBox Grid.Column="1" Text="{Binding Job.SubtitleDonorPath, UpdateSourceTrigger=PropertyChanged}"

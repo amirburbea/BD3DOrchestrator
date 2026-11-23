@@ -9,4 +9,5 @@ public sealed class MediaInspectionResult
     public bool HasDtsAudio { get; set; }
     public bool HasDolbyAudio { get; set; }
     public List<string> CompanionFiles { get; } = [];
+    public List<int> EmbeddedSrtTrackIds { get; } = [];
 }

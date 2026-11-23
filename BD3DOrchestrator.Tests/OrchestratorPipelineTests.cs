@@ -252,20 +252,20 @@ public sealed class OrchestratorPipelineTests
     }
 
     [Test]
-    public async Task ExtractPgsSubtitlesAsync_MissingDonor_ReturnsNullWithoutRunningMkvmerge()
+    public async Task ExtractSubtitlesAsync_MissingDonor_ReturnsNullWithoutRunningMkvmerge()
     {
         FakeFileSystem fs = new();
         FakeProcessRunner runner = new();
         OrchestratorPipeline pipeline = CreatePipeline(fs, runner);
 
-        string? result = await pipeline.ExtractPgsSubtitlesAsync(@"M:\Old\Missing.mkv", @"P:\Proj\MKV3D\stolen_subs.mks");
+        string? result = await pipeline.ExtractSubtitlesAsync(@"M:\Old\Missing.mkv", @"P:\Proj\MKV3D\stolen_subs.mks");
 
         await Assert.That(result).IsNull();
         await Assert.That(runner.Calls.Count).IsEqualTo(0);
     }
 
     [Test]
-    public async Task ExtractPgsSubtitlesAsync_RunsMkvmergeAndReturnsOutputPath()
+    public async Task ExtractSubtitlesAsync_RunsMkvmergeAndReturnsOutputPath()
     {
         FakeFileSystem fs = new();
         fs.AddFile(@"M:\Old\Movie.mkv");
@@ -277,13 +277,32 @@ public sealed class OrchestratorPipelineTests
             });
         OrchestratorPipeline pipeline = CreatePipeline(fs, runner);
 
-        string? result = await pipeline.ExtractPgsSubtitlesAsync(@"M:\Old\Movie.mkv", @"P:\Proj\MKV3D\stolen_subs.mks");
+        string? result = await pipeline.ExtractSubtitlesAsync(@"M:\Old\Movie.mkv", @"P:\Proj\MKV3D\stolen_subs.mks");
 
         await Assert.That(result).IsEqualTo(@"P:\Proj\MKV3D\stolen_subs.mks");
         await Assert.That(runner.Calls.Count).IsEqualTo(1);
         await Assert.That(runner.Calls[0].Executable).IsEqualTo("mkvmerge.exe");
         await Assert.That(runner.Calls[0].Arguments).Contains("--no-video --no-audio");
         await Assert.That(runner.Calls[0].Arguments).Contains(@"""P:\Proj\MKV3D\stolen_subs.mks"" ""M:\Old\Movie.mkv""");
+    }
+
+    [Test]
+    public async Task ExtractSubtitlesAsync_WithTrackIds_PassesSubtitleTracksFilter()
+    {
+        FakeFileSystem fs = new();
+        fs.AddFile(@"M:\Movies\Source.mkv");
+        FakeProcessRunner runner = new FakeProcessRunner()
+            .EnqueueHandler(_ =>
+            {
+                fs.AddFile(@"P:\Proj\MKV3D\embedded_srt.mks");
+                return (0, "", "");
+            });
+        OrchestratorPipeline pipeline = CreatePipeline(fs, runner);
+
+        string? result = await pipeline.ExtractSubtitlesAsync(@"M:\Movies\Source.mkv", @"P:\Proj\MKV3D\embedded_srt.mks", [3, 5]);
+
+        await Assert.That(result).IsEqualTo(@"P:\Proj\MKV3D\embedded_srt.mks");
+        await Assert.That(runner.Calls[0].Arguments).Contains("--subtitle-tracks 3,5");
     }
 
     [Test]

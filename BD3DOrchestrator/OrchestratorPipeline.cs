@@ -244,9 +244,14 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
 
     /// <summary>
     /// Extracts subtitle tracks (preserving languages, track names, and forced/default flags) from a donor .mkv or .mks
-    /// into a local .mks file using the bundled mkvmerge.exe. Returns null if extraction fails or the donor is missing.
+    /// into a local .mks file using the bundled mkvmerge.exe. When <paramref name="subtitleTrackIds"/> is provided, only
+    /// those track IDs are extracted. Returns null if extraction fails or the donor is missing.
     /// </summary>
-    public async Task<string?> ExtractPgsSubtitlesAsync(string donorPath, string outputMksPath, CancellationToken cancellationToken = default)
+    public async Task<string?> ExtractSubtitlesAsync(
+        string donorPath,
+        string outputMksPath,
+        IReadOnlyList<int>? subtitleTrackIds = null,
+        CancellationToken cancellationToken = default)
     {
         if (!fileSystem.FileExists(donorPath))
         {
@@ -259,7 +264,8 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
             mkvmergeExe = "mkvmerge.exe";
         }
         logger.Log($"[Subtitles] Extracting subtitle tracks from '{Path.GetFileName(donorPath)}'...");
-        string args = $"--no-video --no-audio --no-chapters --no-attachments --no-global-tags --no-track-tags -o \"{outputMksPath}\" \"{donorPath}\"";
+        string trackFilter = subtitleTrackIds is { Count: > 0 } ? $" --subtitle-tracks {string.Join(',', subtitleTrackIds)}" : "";
+        string args = $"--no-video --no-audio --no-chapters --no-attachments --no-global-tags --no-track-tags{trackFilter} -o \"{outputMksPath}\" \"{donorPath}\"";
         (int exitCode, string stdout, string stderr) = await processRunner.RunAsync(mkvmergeExe, args, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (exitCode <= 1 && fileSystem.FileExists(outputMksPath))
         {
@@ -459,7 +465,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
                 {
                     fileSystem.CopyFile(stolenSubsMks, destSubs, overwrite: true);
                 }
-                logger.Log($"[Mux Options] Injecting stolen PGS subtitles: {Path.GetFileName(destSubs)}");
+                logger.Log($"[Mux Options] Injecting stolen subtitles: {Path.GetFileName(destSubs)}");
                 arguments.Add(Path.GetFileName(destSubs));
             }
             string outputJson = JsonSerializer.Serialize(arguments, _writeOptions);

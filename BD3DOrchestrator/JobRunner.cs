@@ -67,6 +67,10 @@ public sealed class JobRunner(
                 logger.Log($"  - {Path.GetFileName(file)}");
             }
         }
+        if (inspection.EmbeddedSrtTrackIds.Count > 0)
+        {
+            logger.Log($"Detected {inspection.EmbeddedSrtTrackIds.Count} embedded SRT subtitle track(s) in MKV -> Will preserve in final mux.");
+        }
         logger.Log("Ready. Click 'Auto-Run Pipeline' to perform the complete workflow unattended.");
     }
 
@@ -248,14 +252,19 @@ public sealed class JobRunner(
         }
         // Neutralize pause and start "" in __POSTPROCESS_3D.cmd
         pipeline.NeutralizePostProcessCmd(projectFolder);
-        // Update JSON mux options with companion files, EAC3, & stolen subtitles
-        string? stolenSubsMks = null;
+        // Update JSON mux options with companion files, EAC3, & stolen or embedded SRT subtitles
+        string? extraSubsMks = null;
         if (!string.IsNullOrEmpty(subtitleDonorPath))
         {
             string outSubs = Path.Combine(projectFolder, "stolen_subs.mks");
-            stolenSubsMks = await pipeline.ExtractPgsSubtitlesAsync(subtitleDonorPath, outSubs, cancellationToken).ConfigureAwait(false);
+            extraSubsMks = await pipeline.ExtractSubtitlesAsync(subtitleDonorPath, outSubs, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
-        pipeline.UpdateMuxJson(projectFolder, customEac3, inspection.CompanionFiles, stolenSubsMks);
+        else if (inspection.EmbeddedSrtTrackIds.Count > 0)
+        {
+            string outSrts = Path.Combine(projectFolder, "embedded_srt.mks");
+            extraSubsMks = await pipeline.ExtractSubtitlesAsync(inspection.MkvPath, outSrts, inspection.EmbeddedSrtTrackIds, cancellationToken).ConfigureAwait(false);
+        }
+        pipeline.UpdateMuxJson(projectFolder, customEac3, inspection.CompanionFiles, extraSubsMks);
         // 3. Start Encoding & Muxing
         logger.Log("[Step 3] Launching background x264/x265 encode and final MKV mux...");
         string launcherCmd = Path.Combine(projectFolder, "__ENCODE_3D_LAUNCHER.cmd");

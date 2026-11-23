@@ -41,7 +41,7 @@ public sealed class Job : ObservableObject
     }
 
     /// <summary>
-    /// Optional .mkv or .mks file to steal PGS subtitle tracks from. When set, BD3D2MK3D skips
+    /// Optional .mkv or .mks file to steal subtitle tracks from. When set, BD3D2MK3D skips
     /// converting subtitles and the donor's subtitle tracks are muxed into the final MKV instead.
     /// </summary>
     public string SubtitleDonorPath

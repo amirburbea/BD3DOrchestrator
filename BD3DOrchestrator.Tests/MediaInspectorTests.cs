@@ -51,4 +51,21 @@ public sealed class MediaInspectorTests
         await Assert.That(result.CompanionFiles).Contains(@"M:\Movies\Up.eng.srt");
         await Assert.That(processRunner.Calls.Count).IsEqualTo(0);
     }
+
+    [Test]
+    public async Task InspectAsync_RecordsEmbeddedSrtTrackIdsAndIgnoresPgs()
+    {
+        FakeFileSystem fs = new();
+        fs.AddFile(@"C:\tools\mkvmerge.exe");
+        fs.AddFile(@"M:\Movies\Movie.3d.mvc.mkv");
+
+        FakeProcessRunner processRunner = new FakeProcessRunner().EnqueueResult(
+            stdout: """{"tracks":[{"id":0,"type":"video","codec":"MPEG-4p10"},{"id":1,"type":"audio","codec":"AC-3"},{"id":2,"type":"subtitles","codec":"HDMV PGS","properties":{"codec_id":"S_HDMV/PGS"}},{"id":3,"type":"subtitles","codec":"SubRip/SRT","properties":{"codec_id":"S_TEXT/UTF8"}},{"id":4,"type":"subtitles","codec":"SubRip/SRT","properties":{"codec_id":"S_TEXT/UTF8"}}]}"""
+        );
+        MediaInspector inspector = new(new() { ToolsetDirectory = @"C:\tools" }, fs, processRunner);
+
+        MediaInspectionResult result = await inspector.InspectAsync(@"M:\Movies\Movie.3d.mvc.mkv");
+
+        await Assert.That(result.EmbeddedSrtTrackIds).IsEquivalentTo([3, 4]);
+    }
 }
