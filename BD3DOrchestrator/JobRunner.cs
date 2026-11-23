@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -74,6 +75,28 @@ public sealed class JobRunner(
         logger.Log("Ready. Click 'Auto-Run Pipeline' to perform the complete workflow unattended.");
     }
 
+    /// <summary>Inspects a donor .mkv/.mks file via mkvmerge -J and populates the job's Steal options.</summary>
+    public async Task LoadStealFileAsync(Job job, string path, CancellationToken cancellationToken = default)
+    {
+        (bool hasAudio, bool hasSubtitles) = await mediaInspector.InspectStealFileAsync(path, cancellationToken).ConfigureAwait(false);
+        job.StealPath = path;
+        job.DonorHasAudio = hasAudio;
+        job.DonorHasSubtitles = hasSubtitles;
+        job.StealAudio = hasAudio;
+        job.StealSubtitles = hasSubtitles;
+        logger.Log($"[Steal] '{Path.GetFileName(path)}': Audio={(hasAudio ? "Yes" : "No")}, Subtitles={(hasSubtitles ? "Yes" : "No")}");
+    }
+
+    /// <summary>Clears the Steal file and resets both Steal checkboxes to off and disabled.</summary>
+    public static void ClearStealFile(Job job)
+    {
+        job.StealPath = string.Empty;
+        job.DonorHasAudio = false;
+        job.DonorHasSubtitles = false;
+        job.StealAudio = false;
+        job.StealSubtitles = false;
+    }
+
     /// <summary>Runs the full pipeline. Returns true only when the encode launcher was started.</summary>
     public async Task<bool> RunAsync(Job job, CancellationToken cancellationToken)
     {
@@ -85,8 +108,9 @@ public sealed class JobRunner(
         // Snapshot: later edits to the job (or a new job replacing it) can't change a run in progress.
         string titleToUse = job.EffectiveTitle;
         bool applyAvsTweak = job.ApplyAvsTweak;
-        string subtitleDonorPath = job.SubtitleDonorPath.Trim();
-        bool skipSubtitles = !string.IsNullOrEmpty(subtitleDonorPath);
+        string stealPath = job.StealPath.Trim();
+        bool stealAudio = !string.IsNullOrEmpty(stealPath) && job.StealAudio;
+        bool stealSubtitles = !string.IsNullOrEmpty(stealPath) && job.StealSubtitles;
         logger.Log($"[Profile] {profile.SourcePath} (hash {profile.Hash}, {profile.Settings.Count} settings) -> output '{profile.OutputNameTemplate}'");
         decimal? crfOverride = null;
         if (job.UseExtraQuality)
@@ -101,16 +125,22 @@ public sealed class JobRunner(
                 logger.Log($"[Profile] Extra quality ignored: {profile.ExtraQualityUnavailableReason}.");
             }
         }
-        if (skipSubtitles)
+        if (stealAudio || stealSubtitles)
         {
-            logger.Log($"[Subtitles] Stealing subtitles from '{Path.GetFileName(subtitleDonorPath)}' -> unchecking subtitle streams in BD3D2MK3D.");
+            string what = (stealAudio, stealSubtitles) switch
+            {
+                (true, true) => "audio + subtitles",
+                (true, false) => "audio",
+                _ => "subtitles"
+            };
+            logger.Log($"[Steal] Stealing {what} from '{Path.GetFileName(stealPath)}' -> unchecking those streams in BD3D2MK3D.");
         }
         string? resolvedProject = null;
         // Create an isolated temp job sandbox so BD3D2MK3D's original install folder is never touched or modified.
         // This guarantees complete isolation between multiple parallel instances or manual runs.
         string jobTempDir = Path.Combine(Path.GetTempPath(), "BD3DOrchestrator", $"Job_{Guid.NewGuid():N}");
         fileSystem.CreateDirectory(jobTempDir);
-        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse, crfOverride, skipSubtitles);
+        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse, crfOverride, stealAudio, stealSubtitles);
         ProcessHandle? bd3dProcess = null;
         try
         {
@@ -220,9 +250,9 @@ public sealed class JobRunner(
             return false;
         }
         logger.Log($"[Step 2] Ingesting Audio & Patching Project in: {projectFolder}");
-        // Convert audio if DTS detected
+        // Convert audio if DTS detected (unless we're stealing audio from a previous encode)
         string? customEac3 = null;
-        if (inspection.HasDtsAudio)
+        if (!stealAudio && inspection.HasDtsAudio)
         {
             if (pipeline.FindDemuxedDtsFile(projectFolder) is not { } localDts)
             {
@@ -252,19 +282,27 @@ public sealed class JobRunner(
         }
         // Neutralize pause and start "" in __POSTPROCESS_3D.cmd
         pipeline.NeutralizePostProcessCmd(projectFolder);
-        // Update JSON mux options with companion files, EAC3, & stolen or embedded SRT subtitles
-        string? extraSubsMks = null;
-        if (!string.IsNullOrEmpty(subtitleDonorPath))
+        // Update JSON mux options with companion files, EAC3, & stolen or embedded SRT tracks
+        List<string> extraMksFiles = [];
+        bool stolenHasAudio = false;
+        if (stealAudio || stealSubtitles)
         {
-            string outSubs = Path.Combine(projectFolder, "stolen_subs.mks");
-            extraSubsMks = await pipeline.ExtractSubtitlesAsync(subtitleDonorPath, outSubs, cancellationToken: cancellationToken).ConfigureAwait(false);
+            string outStolen = Path.Combine(projectFolder, "stolen_tracks.mks");
+            if (await pipeline.ExtractTracksAsync(stealPath, outStolen, stealAudio, stealSubtitles, cancellationToken: cancellationToken).ConfigureAwait(false) is { } extracted)
+            {
+                extraMksFiles.Add(extracted);
+                stolenHasAudio = stealAudio;
+            }
         }
-        else if (inspection.EmbeddedSrtTrackIds.Count > 0)
+        if (!stealSubtitles && inspection.EmbeddedSrtTrackIds.Count > 0)
         {
             string outSrts = Path.Combine(projectFolder, "embedded_srt.mks");
-            extraSubsMks = await pipeline.ExtractSubtitlesAsync(inspection.MkvPath, outSrts, inspection.EmbeddedSrtTrackIds, cancellationToken).ConfigureAwait(false);
+            if (await pipeline.ExtractTracksAsync(inspection.MkvPath, outSrts, includeAudio: false, includeSubtitles: true, inspection.EmbeddedSrtTrackIds, cancellationToken).ConfigureAwait(false) is { } extractedSrts)
+            {
+                extraMksFiles.Add(extractedSrts);
+            }
         }
-        pipeline.UpdateMuxJson(projectFolder, customEac3, inspection.CompanionFiles, extraSubsMks);
+        pipeline.UpdateMuxJson(projectFolder, customEac3, inspection.CompanionFiles, extraMksFiles, stolenHasAudio);
         // 3. Start Encoding & Muxing
         logger.Log("[Step 3] Launching background x264/x265 encode and final MKV mux...");
         string launcherCmd = Path.Combine(projectFolder, "__ENCODE_3D_LAUNCHER.cmd");
@@ -290,13 +328,24 @@ public sealed class JobRunner(
         }
     }
 
-    private void CreatePluginTclHook(string jobTempDir, string mkvPath, string movieTitle, decimal? crfOverride, bool skipSubtitles)
+    private void CreatePluginTclHook(string jobTempDir, string mkvPath, string movieTitle, decimal? crfOverride, bool skipAudio, bool skipSubtitles)
     {
         try
         {
             // Set after the profile block, so it wins over the profile's x264crf (both the saved and the live value).
             string jobOverrides = crfOverride is { } crf
                 ? $"# --- Per-movie override ---{Environment.NewLine}set ::config(x264crf) {TclMethods.Quote(EncodeProfile.FormatCrf(crf))}{Environment.NewLine}set ::x264crf {TclMethods.Quote(EncodeProfile.FormatCrf(crf))}{Environment.NewLine}"
+                : "";
+            string skipAudioBlock = skipAudio
+                ? """
+                        if {[info exists ::demux(1)] && [info exists ::demux(0)]} {
+                            set audioEnd [expr {[info exists ::first_subtitle_entryn] ? $::first_subtitle_entryn - 1 : $::demux(0)}]
+                            for {set i $::demux(1)} {$i <= $audioEnd} {incr i} {
+                                set ::demux($i) 0
+                            }
+                        }
+                        set ::default_audio -1
+                """ + Environment.NewLine
                 : "";
             string skipSubtitlesBlock = skipSubtitles
                 ? """
@@ -377,7 +426,7 @@ after 150 {{
     update
     after 400 {{
         set ::moviename ""{escapedTitle}""
-{skipSubtitlesBlock}        GenerateAvs
+{skipAudioBlock}{skipSubtitlesBlock}        GenerateAvs
         catch {{
             set fh [open [file join [pwd] resolved.txt] w]
             puts $fh [file nativename [file join $::projdir [string map $::ILLEGALCHARSMAP $::moviename] MKV3D]]

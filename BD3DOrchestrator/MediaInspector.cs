@@ -122,6 +122,51 @@ public partial class MediaInspector(AppSettings settings, IFileSystem fileSystem
         return result;
     }
 
+    /// <summary>Inspects a donor .mkv/.mks file via mkvmerge -J to see whether it contains audio and/or subtitle tracks.</summary>
+    public async Task<(bool HasAudio, bool HasSubtitles)> InspectStealFileAsync(string path, CancellationToken cancellationToken = default)
+    {
+        if (!fileSystem.FileExists(path) || !fileSystem.FileExists(this._mkvmergePath))
+        {
+            return (false, false);
+        }
+        (int exitCode, string stdout, _) = await processRunner.RunAsync(
+            this._mkvmergePath,
+            $"-J \"{path}\"",
+            workingDir: Path.GetDirectoryName(path),
+            cancellationToken: cancellationToken
+        ).ConfigureAwait(false);
+        if (exitCode is not 0 || string.IsNullOrWhiteSpace(stdout))
+        {
+            return (false, false);
+        }
+        bool hasAudio = false;
+        bool hasSubtitles = false;
+        try
+        {
+            using JsonDocument doc = JsonDocument.Parse(stdout);
+            if (doc.RootElement.TryGetProperty("tracks", out JsonElement tracks))
+            {
+                foreach (JsonElement track in tracks.EnumerateArray())
+                {
+                    string type = track.TryGetProperty("type", out JsonElement tElem) ? (tElem.GetString() ?? "") : "";
+                    if (type.Equals("audio", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasAudio = true;
+                    }
+                    else if (type.Equals("subtitles", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasSubtitles = true;
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore malformed JSON
+        }
+        return (hasAudio, hasSubtitles);
+    }
+
     private void FindCompanionFiles(string directory, string title, string targetMkv, ICollection<string> foundFiles)
     {
         if (!fileSystem.DirectoryExists(directory) || string.IsNullOrEmpty(title))

@@ -243,19 +243,24 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
     }
 
     /// <summary>
-    /// Extracts subtitle tracks (preserving languages, track names, and forced/default flags) from a donor .mkv or .mks
-    /// into a local .mks file using the bundled mkvmerge.exe. When <paramref name="subtitleTrackIds"/> is provided, only
-    /// those track IDs are extracted. Returns null if extraction fails or the donor is missing.
+    /// Extracts audio and/or subtitle tracks (preserving languages, track names, and forced/default flags) from a
+    /// donor .mkv or .mks into a local .mks file using the bundled mkvmerge.exe in a single pass.
     /// </summary>
-    public async Task<string?> ExtractSubtitlesAsync(
+    public async Task<string?> ExtractTracksAsync(
         string donorPath,
         string outputMksPath,
+        bool includeAudio,
+        bool includeSubtitles,
         IReadOnlyList<int>? subtitleTrackIds = null,
         CancellationToken cancellationToken = default)
     {
+        if (!includeAudio && !includeSubtitles)
+        {
+            return null;
+        }
         if (!fileSystem.FileExists(donorPath))
         {
-            logger.Log($"[Subtitles] Donor file not found: '{donorPath}'. Skipping subtitle extraction.");
+            logger.Log($"[Steal] Donor file not found: '{donorPath}'. Skipping track extraction.");
             return null;
         }
         string mkvmergeExe = Path.Combine(settings.ToolsetDirectory, "mkvmerge.exe");
@@ -263,21 +268,35 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
         {
             mkvmergeExe = "mkvmerge.exe";
         }
-        logger.Log($"[Subtitles] Extracting subtitle tracks from '{Path.GetFileName(donorPath)}'...");
-        string trackFilter = subtitleTrackIds is { Count: > 0 } ? $" --subtitle-tracks {string.Join(',', subtitleTrackIds)}" : "";
-        string args = $"--no-video --no-audio --no-chapters --no-attachments --no-global-tags --no-track-tags{trackFilter} -o \"{outputMksPath}\" \"{donorPath}\"";
+        string what = (includeAudio, includeSubtitles) switch
+        {
+            (true, true) => "audio + subtitle",
+            (true, false) => "audio",
+            _ => "subtitle"
+        };
+        logger.Log($"[Steal] Extracting {what} tracks from '{Path.GetFileName(donorPath)}'...");
+        string audioFlag = includeAudio ? "" : " --no-audio";
+        string subFlag = includeSubtitles
+            ? (subtitleTrackIds is { Count: > 0 } ? $" --subtitle-tracks {string.Join(',', subtitleTrackIds)}" : "")
+            : " --no-subtitles";
+        string args = $"--no-video --no-chapters --no-attachments --no-global-tags --no-track-tags{audioFlag}{subFlag} -o \"{outputMksPath}\" \"{donorPath}\"";
         (int exitCode, string stdout, string stderr) = await processRunner.RunAsync(mkvmergeExe, args, cancellationToken: cancellationToken).ConfigureAwait(false);
         if (exitCode <= 1 && fileSystem.FileExists(outputMksPath))
         {
-            logger.Log($"[Subtitles] Extracted donor subtitles to '{Path.GetFileName(outputMksPath)}'.");
+            logger.Log($"[Steal] Extracted {what} tracks to '{Path.GetFileName(outputMksPath)}'.");
             return outputMksPath;
         }
         string detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
-        logger.Log($"[Subtitles] mkvmerge failed (exit {exitCode}): {detail.Trim()}");
+        logger.Log($"[Steal] mkvmerge failed (exit {exitCode}): {detail.Trim()}");
         return null;
     }
 
-    public bool UpdateMuxJson(string projectMkv3dDir, string? customEac3File, IReadOnlyList<string> companionFiles, string? stolenSubsMks = null)
+    public bool UpdateMuxJson(
+        string projectMkv3dDir,
+        string? customEac3File,
+        IReadOnlyList<string> companionFiles,
+        IReadOnlyList<string>? extraMksFiles = null,
+        bool stolenHasAudio = false)
     {
         bool anyUpdated = false;
         foreach (string targetName in _mux3DOptionsFiles)
@@ -287,7 +306,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
             {
                 continue;
             }
-            if (this.UpdateSingleMuxJson(jsonPath, projectMkv3dDir, customEac3File, companionFiles, stolenSubsMks))
+            if (this.UpdateSingleMuxJson(jsonPath, projectMkv3dDir, customEac3File, companionFiles, extraMksFiles, stolenHasAudio))
             {
                 anyUpdated = true;
             }
@@ -298,7 +317,13 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
     [GeneratedRegex(@"(?m)^Return\(last\)")]
     private static partial Regex AvsEndRegex();
 
-    private bool UpdateSingleMuxJson(string jsonPath, string projectMkv3dDir, string? customEac3File, IReadOnlyList<string> companionFiles, string? stolenSubsMks)
+    private bool UpdateSingleMuxJson(
+        string jsonPath,
+        string projectMkv3dDir,
+        string? customEac3File,
+        IReadOnlyList<string> companionFiles,
+        IReadOnlyList<string>? extraMksFiles,
+        bool stolenHasAudio)
     {
         try
         {
@@ -340,20 +365,23 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
                     arguments.RemoveRange(startIndex, removeCount);
                 }
             }
-            // Check if any existing audio tracks remain in JSON
-            bool hasAudioTrack = false;
-            foreach (string arg in arguments)
+            // Check if any existing audio tracks remain in JSON (or if we're injecting stolen audio)
+            bool hasAudioTrack = stolenHasAudio;
+            if (!hasAudioTrack)
             {
-                if (arg.EndsWith(".dts", StringComparison.OrdinalIgnoreCase) ||
-                    arg.EndsWith(".dtshd", StringComparison.OrdinalIgnoreCase) ||
-                    arg.EndsWith(".ac3", StringComparison.OrdinalIgnoreCase) ||
-                    arg.EndsWith(".ec3", StringComparison.OrdinalIgnoreCase) ||
-                    arg.EndsWith(".flac", StringComparison.OrdinalIgnoreCase) ||
-                    arg.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) ||
-                    arg.EndsWith(".mka", StringComparison.OrdinalIgnoreCase))
+                foreach (string arg in arguments)
                 {
-                    hasAudioTrack = true;
-                    break;
+                    if (arg.EndsWith(".dts", StringComparison.OrdinalIgnoreCase) ||
+                        arg.EndsWith(".dtshd", StringComparison.OrdinalIgnoreCase) ||
+                        arg.EndsWith(".ac3", StringComparison.OrdinalIgnoreCase) ||
+                        arg.EndsWith(".ec3", StringComparison.OrdinalIgnoreCase) ||
+                        arg.EndsWith(".flac", StringComparison.OrdinalIgnoreCase) ||
+                        arg.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) ||
+                        arg.EndsWith(".mka", StringComparison.OrdinalIgnoreCase))
+                    {
+                        hasAudioTrack = true;
+                        break;
+                    }
                 }
             }
             // If we converted DTS to custom EAC3, inject it
@@ -458,15 +486,22 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
                     arguments.Add(Path.GetFileName(destCompanion));
                 }
             }
-            if (!string.IsNullOrEmpty(stolenSubsMks) && fileSystem.FileExists(stolenSubsMks))
+            if (extraMksFiles is not null)
             {
-                string destSubs = Path.Combine(projectMkv3dDir, Path.GetFileName(stolenSubsMks));
-                if (!destSubs.Equals(stolenSubsMks, StringComparison.OrdinalIgnoreCase))
+                foreach (string extraMks in extraMksFiles)
                 {
-                    fileSystem.CopyFile(stolenSubsMks, destSubs, overwrite: true);
+                    if (string.IsNullOrEmpty(extraMks) || !fileSystem.FileExists(extraMks))
+                    {
+                        continue;
+                    }
+                    string destMks = Path.Combine(projectMkv3dDir, Path.GetFileName(extraMks));
+                    if (!destMks.Equals(extraMks, StringComparison.OrdinalIgnoreCase))
+                    {
+                        fileSystem.CopyFile(extraMks, destMks, overwrite: true);
+                    }
+                    logger.Log($"[Mux Options] Injecting stolen tracks: {Path.GetFileName(destMks)}");
+                    arguments.Add(Path.GetFileName(destMks));
                 }
-                logger.Log($"[Mux Options] Injecting stolen subtitles: {Path.GetFileName(destSubs)}");
-                arguments.Add(Path.GetFileName(destSubs));
             }
             string outputJson = JsonSerializer.Serialize(arguments, _writeOptions);
             fileSystem.WriteAllText(jsonPath, outputJson);

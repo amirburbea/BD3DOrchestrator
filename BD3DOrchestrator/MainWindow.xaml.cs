@@ -135,22 +135,29 @@ public partial class MainWindow : Window
         }
     }
 
-    private void BtnBrowseSubtitleDonor_Click(object sender, RoutedEventArgs e)
+    private async void BtnBrowseSteal_Click(object sender, RoutedEventArgs e)
     {
         OpenFileDialog fileDlg = new()
         {
-            Title = "Select MKV or MKS to Steal Subtitles From",
+            Title = "Select MKV or MKS to Steal Tracks From",
             Filter = "MKV / MKS Files (*.mkv;*.mks)|*.mkv;*.mks|All Files (*.*)|*.*"
         };
         if (fileDlg.ShowDialog() == true && fileDlg.FileName is { Length: not 0 } fileName)
         {
-            this._vm.Job.SubtitleDonorPath = fileName;
+            try
+            {
+                await this._runner.LoadStealFileAsync(this._vm.Job, fileName);
+            }
+            catch (Exception ex)
+            {
+                this.AppendLog($"[Steal] Could not inspect '{fileName}': {ex.Message}");
+            }
         }
     }
 
-    private void BtnClearSubtitleDonor_Click(object sender, RoutedEventArgs e)
+    private void BtnClearSteal_Click(object sender, RoutedEventArgs e)
     {
-        this._vm.Job.SubtitleDonorPath = string.Empty;
+        JobRunner.ClearStealFile(this._vm.Job);
     }
 
     // The window awaits one task and resumes on the UI thread; everything inside the runner runs off it.

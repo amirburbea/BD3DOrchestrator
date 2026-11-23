@@ -41,13 +41,12 @@ public sealed class JobRunnerTests
             this.Profile = profile ?? ProfileWithCrf(18);
             this.Fs.AddDirectory(this.Settings.ProjectDirectory);
             this._httpClient = new(new FakeHttpMessageHandler(tmdb));
-            FakeProcessRunner processRunner = new();
             this.Runner = new(
                 this.Settings,
                 this.Profile,
-                new(this.Settings, this.Fs, processRunner),
+                new(this.Settings, this.Fs, this.ProcessRunner),
                 new(this._httpClient, this.Settings, this.Fs),
-                new(this.Settings, this.Profile, this.Logger, this.Fs, processRunner),
+                new(this.Settings, this.Profile, this.Logger, this.Fs, this.ProcessRunner),
                 this.Fs,
                 this.Logger,
                 this.Processes,
@@ -58,6 +57,7 @@ public sealed class JobRunnerTests
         public FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 11, 20, 14, 0, 0, TimeSpan.Zero));
         public DateTime NowLocal => this.Time.GetLocalNow().DateTime;
         public FakeFileSystem Fs { get; } = new();
+        public FakeProcessRunner ProcessRunner { get; } = new();
         public FakeMessageLogger Logger { get; } = new();
         public FakeProcessManager Processes { get; } = new();
         public FakeEncodeProfile Profile { get; }
@@ -201,13 +201,58 @@ public sealed class JobRunnerTests
     }
 
     [Test]
-    public async Task NewJob_HasEmptySubtitleDonorPath()
+    public async Task NewJob_HasStealDefaultsOffAndDisabled()
     {
-        await Assert.That(new Job().SubtitleDonorPath).IsEqualTo(string.Empty);
+        Job job = new();
+        await Assert.That(job.StealPath).IsEqualTo(string.Empty);
+        await Assert.That(job.DonorHasAudio).IsFalse();
+        await Assert.That(job.DonorHasSubtitles).IsFalse();
+        await Assert.That(job.StealAudio).IsFalse();
+        await Assert.That(job.StealSubtitles).IsFalse();
     }
 
     [Test]
-    public async Task RunAsync_NoSubtitleDonor_DoesNotUncheckSubtitles()
+    public async Task LoadStealFileAsync_AudioOnly_EnablesAudioAndDisablesSubtitles()
+    {
+        using Harness h = new();
+        h.Fs.AddFile(@"C:\tools\mkvmerge.exe");
+        h.Fs.AddFile(@"M:\Old\Movie.mkv");
+        h.ProcessRunner.EnqueueResult(stdout: """{"tracks":[{"id":0,"type":"video"},{"id":1,"type":"audio"}]}""");
+        Job job = new();
+
+        await h.Runner.LoadStealFileAsync(job, @"M:\Old\Movie.mkv");
+
+        await Assert.That(job.StealPath).IsEqualTo(@"M:\Old\Movie.mkv");
+        await Assert.That(job.DonorHasAudio).IsTrue();
+        await Assert.That(job.DonorHasSubtitles).IsFalse();
+        await Assert.That(job.StealAudio).IsTrue();
+        await Assert.That(job.StealSubtitles).IsFalse();
+
+        JobRunner.ClearStealFile(job);
+        await Assert.That(job.StealPath).IsEqualTo(string.Empty);
+        await Assert.That(job.DonorHasAudio).IsFalse();
+        await Assert.That(job.StealAudio).IsFalse();
+    }
+
+    [Test]
+    public async Task LoadStealFileAsync_AudioAndSubtitles_EnablesBoth()
+    {
+        using Harness h = new();
+        h.Fs.AddFile(@"C:\tools\mkvmerge.exe");
+        h.Fs.AddFile(@"M:\Old\Movie.mkv");
+        h.ProcessRunner.EnqueueResult(stdout: """{"tracks":[{"id":0,"type":"video"},{"id":1,"type":"audio"},{"id":2,"type":"subtitles"}]}""");
+        Job job = new();
+
+        await h.Runner.LoadStealFileAsync(job, @"M:\Old\Movie.mkv");
+
+        await Assert.That(job.DonorHasAudio).IsTrue();
+        await Assert.That(job.DonorHasSubtitles).IsTrue();
+        await Assert.That(job.StealAudio).IsTrue();
+        await Assert.That(job.StealSubtitles).IsTrue();
+    }
+
+    [Test]
+    public async Task RunAsync_NoStealFile_DoesNotUncheckAudioOrSubtitles()
     {
         using Harness h = new();
         h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
@@ -215,27 +260,32 @@ public sealed class JobRunnerTests
         string hook = await RunAndCaptureHookAsync(h, LoadedJob("Up"));
 
         await Assert.That(hook).DoesNotContain("::first_subtitle_entryn");
+        await Assert.That(hook).DoesNotContain("::default_audio");
     }
 
     [Test]
-    public async Task RunAsync_SubtitleDonorSet_UnchecksAllSubtitlesBeforeGenerateAvs()
+    public async Task RunAsync_StealAudioAndSubtitles_UnchecksBothBeforeGenerateAvs()
     {
         using Harness h = new();
         h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
         Job job = LoadedJob("Up");
-        job.SubtitleDonorPath = @"M:\Old\Up.3d.tab.mkv";
+        job.StealPath = @"M:\Old\Up.3d.tab.mkv";
+        job.StealAudio = true;
+        job.StealSubtitles = true;
 
         string hook = await RunAndCaptureHookAsync(h, job);
 
         int openAt = hook.IndexOf("OpenMKV ", StringComparison.Ordinal);
-        int uncheckAt = hook.IndexOf("set ::demux($i) 0", StringComparison.Ordinal);
+        int uncheckAudioAt = hook.IndexOf("set ::default_audio -1", StringComparison.Ordinal);
+        int uncheckSubAt = hook.IndexOf("set ::default_sub -1", StringComparison.Ordinal);
         int generateAt = hook.IndexOf("GenerateAvs", StringComparison.Ordinal);
         await Assert.That(openAt).IsGreaterThanOrEqualTo(0);
-        await Assert.That(uncheckAt).IsGreaterThan(openAt);
-        await Assert.That(generateAt).IsGreaterThan(uncheckAt);
+        await Assert.That(uncheckAudioAt).IsGreaterThan(openAt);
+        await Assert.That(uncheckSubAt).IsGreaterThan(openAt);
+        await Assert.That(generateAt).IsGreaterThan(uncheckAudioAt);
+        await Assert.That(generateAt).IsGreaterThan(uncheckSubAt);
         await Assert.That(hook).Contains("::first_subtitle_entryn");
-        await Assert.That(hook).Contains("set ::default_sub -1");
-        await Assert.That(h.Logger.Messages).Contains("[Subtitles] Stealing subtitles from 'Up.3d.tab.mkv' -> unchecking subtitle streams in BD3D2MK3D.");
+        await Assert.That(h.Logger.Messages).Contains("[Steal] Stealing audio + subtitles from 'Up.3d.tab.mkv' -> unchecking those streams in BD3D2MK3D.");
     }
 
     [Test]

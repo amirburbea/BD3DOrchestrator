@@ -20,6 +20,7 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -65,28 +66,45 @@
                           IsEnabled="{Binding IsExtraQualityAvailable}"
                           Content="{Binding ExtraQualityLabel}"
                           ToolTip="One CRF step below the default; all other settings stay the same."/>
-                <Grid Margin="0,6,0,0">
+            </StackPanel>
+        </Border>
+        <!-- Steal Tracks from Previous Encode -->
+        <Border Grid.Row="3" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+            <StackPanel IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}">
+                <TextBlock Text="Steal Tracks from Previous Encode" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6"/>
+                <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Steal Subtitles from:" VerticalAlignment="Center" Margin="0,0,8,0"
+                    <TextBlock Grid.Column="0" Text="Donor File:" VerticalAlignment="Center" Margin="0,0,8,0"
                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                               ToolTip="Select a previously encoded .mkv or .mks file. BD3D2MK3D will skip subtitle conversion and mux the donor's subtitle tracks instead."/>
-                    <TextBox Grid.Column="1" Text="{Binding Job.SubtitleDonorPath, UpdateSourceTrigger=PropertyChanged}"
+                               ToolTip="Select a previously encoded .mkv or .mks file to steal audio and/or subtitle tracks from."/>
+                    <TextBox Grid.Column="1" Text="{Binding Job.StealPath, UpdateSourceTrigger=PropertyChanged}"
                              VerticalAlignment="Center" Margin="0,0,6,0" IsReadOnly="True"
-                             ToolTip="Optional .mkv or .mks file to steal subtitle tracks from"/>
-                    <Button Grid.Column="2" Content="Browse..." Click="BtnBrowseSubtitleDonor_Click" Margin="0,0,6,0"/>
-                    <Button Grid.Column="3" Content="Clear" Click="BtnClearSubtitleDonor_Click"
-                            IsEnabled="{Binding Job.SubtitleDonorPath, Converter={StaticResource IsNotNullOrEmptyConverter}}"/>
+                             ToolTip="Optional .mkv or .mks file to steal tracks from"/>
+                    <Button Grid.Column="2" Content="Browse..." Click="BtnBrowseSteal_Click" Margin="0,0,6,0"/>
+                    <Button Grid.Column="3" Content="Clear" Click="BtnClearSteal_Click"
+                            IsEnabled="{Binding Job.StealPath, Converter={StaticResource IsNotNullOrEmptyConverter}}"/>
                 </Grid>
+                <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                    <CheckBox IsChecked="{Binding Job.StealAudio}"
+                              IsEnabled="{Binding Job.DonorHasAudio}"
+                              Content="Audio"
+                              Margin="0,0,16,0"
+                              ToolTip="Uncheck audio in BD3D2MK3D and mux audio tracks from the donor file instead."/>
+                    <CheckBox IsChecked="{Binding Job.StealSubtitles}"
+                              IsEnabled="{Binding Job.DonorHasSubtitles}"
+                              Content="Subtitles"
+                              ToolTip="Uncheck subtitles in BD3D2MK3D and mux subtitle tracks from the donor file instead."/>
+                </StackPanel>
             </StackPanel>
         </Border>
         <!-- Log output: a read-only TextBox so lines can be selected and copied across rows; MainWindow caps its length.
              Deliberately a fixed dark terminal in both light and dark mode, not theme-colored. -->
-        <Border Grid.Row="3" Background="#0C0C0C" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,12" ClipToBounds="True">
+        <Border Grid.Row="4" Background="#0C0C0C" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Margin="0,0,0,12" ClipToBounds="True">
             <TextBox x:Name="TxtLog" IsReadOnly="True" IsUndoEnabled="False" TextWrapping="NoWrap"
                      Background="Transparent" BorderThickness="0" Padding="8,6"
                      FontFamily="Consolas" FontSize="12" Foreground="#4AF626"
@@ -184,7 +202,7 @@
             </TextBox>
         </Border>
         <!-- Single Action Button -->
-        <Grid Grid.Row="4">
+        <Grid Grid.Row="5">
             <Button Content="{Binding ActionButtonText}"
                     Style="{DynamicResource AccentButtonStyle}"
                     IsEnabled="{Binding IsRunning, Converter={StaticResource NegatedBooleanConverter}}"

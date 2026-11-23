@@ -41,14 +41,37 @@ public sealed class Job : ObservableObject
     }
 
     /// <summary>
-    /// Optional .mkv or .mks file to steal subtitle tracks from. When set, BD3D2MK3D skips
-    /// converting subtitles and the donor's subtitle tracks are muxed into the final MKV instead.
+    /// Optional .mkv or .mks file to steal audio and/or subtitle tracks from.
     /// </summary>
-    public string SubtitleDonorPath
+    public string StealPath
     {
         get;
         set => this.SetField(ref field, value);
     } = string.Empty;
+
+    public bool DonorHasAudio
+    {
+        get;
+        set => this.SetField(ref field, value);
+    }
+
+    public bool DonorHasSubtitles
+    {
+        get;
+        set => this.SetField(ref field, value);
+    }
+
+    public bool StealAudio
+    {
+        get;
+        set => this.SetField(ref field, value);
+    }
+
+    public bool StealSubtitles
+    {
+        get;
+        set => this.SetField(ref field, value);
+    }
 
     /// <summary>Result of inspecting the input file; null until something has been loaded.</summary>
     public MediaInspectionResult? Inspection { get; set; }
