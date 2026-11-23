@@ -69,7 +69,7 @@ public sealed class MovieDetectorTests
 
         MovieInfo info = await detector.DetectAsync(@"M:\Movies\Blade Runner 2049 (2017).3d.mvc.mkv");
 
-        await Assert.That(handler.Requests[0].RequestUri!.Query).IsEqualTo("?query=Blade%20Runner%202049&include_adult=false&year=2017");
+        await Assert.That(handler.Requests[0].RequestUri!.Query).IsEqualTo("?query=Blade%20Runner%202049&include_adult=false&primary_release_year=2017");
         await Assert.That(info.Title).IsEqualTo("Blade Runner 2049");
         await Assert.That(info.Year).IsEqualTo(2017);
         await Assert.That(info.Reason).IsEqualTo("Live action or unconfirmed");
@@ -112,6 +112,24 @@ public sealed class MovieDetectorTests
 
         await Assert.That(info.Title).IsEqualTo("Avatar");
         await Assert.That(info.Year).IsEqualTo(2009);
+        await Assert.That(info.IsAnimation).IsFalse();
+    }
+
+    [Test]
+    public async Task DetectAsync_RemakeWithSameTitle_PrefersMatchingReleaseYearOverAnimatedOriginal()
+    {
+        FakeFileSystem fs = new();
+        fs.AddFile(@"M:\Movies\Aladdin (2019)\Aladdin.3d.mvc.mkv");
+        FakeHttpMessageHandler handler = new(_ => new TmdbSearchResults(
+            new TmdbMovie("Aladdin", "1992-11-25", 16, 10751),
+            new TmdbMovie("Aladdin", "2019-05-22", 12, 14)).ToResponse());
+        using HttpClient httpClient = new(handler);
+        MovieDetector detector = new(httpClient, new() { TmdbApiReadAccessToken = "secret-token" }, fs);
+
+        MovieInfo info = await detector.DetectAsync(@"M:\Movies\Aladdin (2019)\Aladdin.3d.mvc.mkv");
+
+        await Assert.That(handler.Requests[0].RequestUri!.Query).IsEqualTo("?query=Aladdin&include_adult=false&primary_release_year=2019");
+        await Assert.That(info.Year).IsEqualTo(2019);
         await Assert.That(info.IsAnimation).IsFalse();
     }
 }

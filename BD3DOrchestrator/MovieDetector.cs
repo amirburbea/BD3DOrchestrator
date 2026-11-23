@@ -35,6 +35,12 @@ public partial class MovieDetector(HttpClient httpClient, AppSettings settings, 
         string dir = fileSystem.DirectoryExists(path) ? path : (Path.GetDirectoryName(path) ?? ".");
         string nameCandidate = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         (string title, int year) = ParseTitleAndYear(nameCandidate);
+        // If the file name has no "(yyyy)", check the containing folder name (e.g. "Aladdin (2019)\Aladdin.3d.mvc.mkv").
+        if (year == 0 && !fileSystem.DirectoryExists(path))
+        {
+            (_, int folderYear) = ParseTitleAndYear(Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
+            year = folderYear;
+        }
         // 1. A local .nfo is authoritative (title, year and genre).
         if (this.TryReadNfo(dir) is { } nfoInfo)
         {
@@ -64,7 +70,7 @@ public partial class MovieDetector(HttpClient httpClient, AppSettings settings, 
         try
         {
             string url = $"https://api.themoviedb.org/3/search/movie?query={Uri.EscapeDataString(title)}&include_adult=false"
-                + (year > 0 ? $"&year={year}" : "");
+                + (year > 0 ? $"&primary_release_year={year}" : "");
             using HttpRequestMessage request = new(HttpMethod.Get, url)
             {
                 Headers =
@@ -88,12 +94,25 @@ public partial class MovieDetector(HttpClient httpClient, AppSettings settings, 
                 return null;
             }
             JsonElement best = results[0];
+            int bestScore = -1;
             foreach (JsonElement item in results.EnumerateArray())
             {
-                if (item.TryGetProperty("title", out JsonElement itemTitle) && string.Equals(itemTitle.GetString(), title, StringComparison.OrdinalIgnoreCase))
+                bool titleMatch = item.TryGetProperty("title", out JsonElement itemTitle) &&
+                                  string.Equals(itemTitle.GetString(), title, StringComparison.OrdinalIgnoreCase);
+                bool yearMatch = year > 0 &&
+                                 item.TryGetProperty("release_date", out JsonElement itemDate) &&
+                                 itemDate.GetString() is { Length: >= 4 } rd &&
+                                 int.TryParse(rd[..4], out int ry) &&
+                                 ry == year;
+                int score = (yearMatch ? 2 : 0) + (titleMatch ? 1 : 0);
+                if (score > bestScore)
                 {
                     best = item;
-                    break;
+                    bestScore = score;
+                    if (score == (year > 0 ? 3 : 1))
+                    {
+                        break;
+                    }
                 }
             }
             string matchedTitle = best.TryGetProperty("title", out JsonElement titleElem) && titleElem.GetString() is { Length: > 0 } titleText ? titleText : title;
