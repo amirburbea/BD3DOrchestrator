@@ -7,11 +7,14 @@ if not defined ORCH_SOURCE set "ORCH_SOURCE=\\192.168.253.3\Software\BD3DOrchest
 set "STAGE=%TEMP%\BD3DOrchestrator-publish"
 
 if exist "%STAGE%" rmdir /s /q "%STAGE%"
-dotnet publish "%~dp0..\BD3DOrchestrator\BD3DOrchestrator.csproj" -c Release --no-self-contained -o "%STAGE%"
-if errorlevel 1 (
-    echo.
-    echo Build failed - nothing was published.
-    exit /b 1
+for %%A in (x64 arm64) do (
+    echo Publishing win-%%A ...
+    dotnet publish "%~dp0..\BD3DOrchestrator\BD3DOrchestrator.csproj" -c Release -r win-%%A --no-self-contained -o "%STAGE%\%%A"
+    if errorlevel 1 (
+        echo.
+        echo Build failed for win-%%A - nothing was published.
+        exit /b 1
+    )
 )
 
 copy /y "%~dp0Launch-BD3DOrchestrator.cmd" "%STAGE%\" >nul
