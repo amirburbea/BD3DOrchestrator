@@ -81,7 +81,8 @@ public sealed class JobRunner(
         // Snapshot: later edits to the job (or a new job replacing it) can't change a run in progress.
         string titleToUse = job.EffectiveTitle;
         bool applyAvsTweak = job.ApplyAvsTweak;
-        bool skipSubtitles = job.SkipSubtitles;
+        string subtitleDonorPath = job.SubtitleDonorPath.Trim();
+        bool skipSubtitles = !string.IsNullOrEmpty(subtitleDonorPath);
         logger.Log($"[Profile] {profile.SourcePath} (hash {profile.Hash}, {profile.Settings.Count} settings) -> output '{profile.OutputNameTemplate}'");
         decimal? crfOverride = null;
         if (job.UseExtraQuality)
@@ -98,7 +99,7 @@ public sealed class JobRunner(
         }
         if (skipSubtitles)
         {
-            logger.Log("[Subtitles] Skip subtitles enabled: unchecking all subtitle streams in BD3D2MK3D.");
+            logger.Log($"[Subtitles] Stealing subtitles from '{Path.GetFileName(subtitleDonorPath)}' -> unchecking subtitle streams in BD3D2MK3D.");
         }
         string? resolvedProject = null;
         // Create an isolated temp job sandbox so BD3D2MK3D's original install folder is never touched or modified.
@@ -247,8 +248,14 @@ public sealed class JobRunner(
         }
         // Neutralize pause and start "" in __POSTPROCESS_3D.cmd
         pipeline.NeutralizePostProcessCmd(projectFolder);
-        // Update JSON mux options with companion files & EAC3
-        pipeline.UpdateMuxJson(projectFolder, customEac3, inspection.CompanionFiles);
+        // Update JSON mux options with companion files, EAC3, & stolen subtitles
+        string? stolenSubsMks = null;
+        if (!string.IsNullOrEmpty(subtitleDonorPath))
+        {
+            string outSubs = Path.Combine(projectFolder, "stolen_subs.mks");
+            stolenSubsMks = await pipeline.ExtractPgsSubtitlesAsync(subtitleDonorPath, outSubs, cancellationToken).ConfigureAwait(false);
+        }
+        pipeline.UpdateMuxJson(projectFolder, customEac3, inspection.CompanionFiles, stolenSubsMks);
         // 3. Start Encoding & Muxing
         logger.Log("[Step 3] Launching background x264/x265 encode and final MKV mux...");
         string launcherCmd = Path.Combine(projectFolder, "__ENCODE_3D_LAUNCHER.cmd");

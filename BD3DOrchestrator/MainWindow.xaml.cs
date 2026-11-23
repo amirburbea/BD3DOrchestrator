@@ -135,6 +135,24 @@ public partial class MainWindow : Window
         }
     }
 
+    private void BtnBrowseSubtitleDonor_Click(object sender, RoutedEventArgs e)
+    {
+        OpenFileDialog fileDlg = new()
+        {
+            Title = "Select MKV or MKS to Steal Subtitles From",
+            Filter = "MKV / MKS Files (*.mkv;*.mks)|*.mkv;*.mks|All Files (*.*)|*.*"
+        };
+        if (fileDlg.ShowDialog() == true && fileDlg.FileName is { Length: not 0 } fileName)
+        {
+            this._vm.Job.SubtitleDonorPath = fileName;
+        }
+    }
+
+    private void BtnClearSubtitleDonor_Click(object sender, RoutedEventArgs e)
+    {
+        this._vm.Job.SubtitleDonorPath = string.Empty;
+    }
+
     // The window awaits one task and resumes on the UI thread; everything inside the runner runs off it.
     private async Task LoadAsync(string path)
     {

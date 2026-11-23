@@ -250,4 +250,55 @@ public sealed class OrchestratorPipelineTests
 
         await Assert.That(result).IsNull();
     }
+
+    [Test]
+    public async Task ExtractPgsSubtitlesAsync_MissingDonor_ReturnsNullWithoutRunningMkvmerge()
+    {
+        FakeFileSystem fs = new();
+        FakeProcessRunner runner = new();
+        OrchestratorPipeline pipeline = CreatePipeline(fs, runner);
+
+        string? result = await pipeline.ExtractPgsSubtitlesAsync(@"M:\Old\Missing.mkv", @"P:\Proj\MKV3D\stolen_subs.mks");
+
+        await Assert.That(result).IsNull();
+        await Assert.That(runner.Calls.Count).IsEqualTo(0);
+    }
+
+    [Test]
+    public async Task ExtractPgsSubtitlesAsync_RunsMkvmergeAndReturnsOutputPath()
+    {
+        FakeFileSystem fs = new();
+        fs.AddFile(@"M:\Old\Movie.mkv");
+        FakeProcessRunner runner = new FakeProcessRunner()
+            .EnqueueHandler(_ =>
+            {
+                fs.AddFile(@"P:\Proj\MKV3D\stolen_subs.mks");
+                return (0, "", "");
+            });
+        OrchestratorPipeline pipeline = CreatePipeline(fs, runner);
+
+        string? result = await pipeline.ExtractPgsSubtitlesAsync(@"M:\Old\Movie.mkv", @"P:\Proj\MKV3D\stolen_subs.mks");
+
+        await Assert.That(result).IsEqualTo(@"P:\Proj\MKV3D\stolen_subs.mks");
+        await Assert.That(runner.Calls.Count).IsEqualTo(1);
+        await Assert.That(runner.Calls[0].Executable).IsEqualTo("mkvmerge.exe");
+        await Assert.That(runner.Calls[0].Arguments).Contains("--no-video --no-audio");
+        await Assert.That(runner.Calls[0].Arguments).Contains(@"""P:\Proj\MKV3D\stolen_subs.mks"" ""M:\Old\Movie.mkv""");
+    }
+
+    [Test]
+    public async Task UpdateMuxJson_WithStolenSubsMks_AppendsFileWithoutLanguageOverride()
+    {
+        FakeFileSystem fs = new();
+        fs.AddFile(@"P:\Proj\MKV3D\__MUX_3D_OPTIONS.json", """["--output", "out.mkv", "video.264"]""");
+        fs.AddFile(@"P:\Proj\MKV3D\stolen_subs.mks");
+        OrchestratorPipeline pipeline = CreatePipeline(fs, new FakeProcessRunner());
+
+        bool updated = pipeline.UpdateMuxJson(@"P:\Proj\MKV3D", customEac3File: null, companionFiles: [], stolenSubsMks: @"P:\Proj\MKV3D\stolen_subs.mks");
+
+        await Assert.That(updated).IsTrue();
+        string json = fs.ReadAllText(@"P:\Proj\MKV3D\__MUX_3D_OPTIONS.json");
+        await Assert.That(json).Contains("stolen_subs.mks");
+        await Assert.That(json).DoesNotContain("--language");
+    }
 }

@@ -201,13 +201,13 @@ public sealed class JobRunnerTests
     }
 
     [Test]
-    public async Task NewJob_HasSkipSubtitlesOff()
+    public async Task NewJob_HasEmptySubtitleDonorPath()
     {
-        await Assert.That(new Job().SkipSubtitles).IsFalse();
+        await Assert.That(new Job().SubtitleDonorPath).IsEqualTo(string.Empty);
     }
 
     [Test]
-    public async Task RunAsync_SkipSubtitlesOff_DoesNotUncheckSubtitles()
+    public async Task RunAsync_NoSubtitleDonor_DoesNotUncheckSubtitles()
     {
         using Harness h = new();
         h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
@@ -218,12 +218,12 @@ public sealed class JobRunnerTests
     }
 
     [Test]
-    public async Task RunAsync_SkipSubtitlesOn_UnchecksAllSubtitlesBeforeGenerateAvs()
+    public async Task RunAsync_SubtitleDonorSet_UnchecksAllSubtitlesBeforeGenerateAvs()
     {
         using Harness h = new();
         h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
         Job job = LoadedJob("Up");
-        job.SkipSubtitles = true;
+        job.SubtitleDonorPath = @"M:\Old\Up.3d.tab.mkv";
 
         string hook = await RunAndCaptureHookAsync(h, job);
 
@@ -235,7 +235,7 @@ public sealed class JobRunnerTests
         await Assert.That(generateAt).IsGreaterThan(uncheckAt);
         await Assert.That(hook).Contains("::first_subtitle_entryn");
         await Assert.That(hook).Contains("set ::default_sub -1");
-        await Assert.That(h.Logger.Messages).Contains("[Subtitles] Skip subtitles enabled: unchecking all subtitle streams in BD3D2MK3D.");
+        await Assert.That(h.Logger.Messages).Contains("[Subtitles] Stealing subtitles from 'Up.3d.tab.mkv' -> unchecking subtitle streams in BD3D2MK3D.");
     }
 
     [Test]

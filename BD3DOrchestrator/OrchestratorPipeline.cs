@@ -242,7 +242,36 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
         }
     }
 
-    public bool UpdateMuxJson(string projectMkv3dDir, string? customEac3File, IReadOnlyList<string> companionFiles)
+    /// <summary>
+    /// Extracts subtitle tracks (preserving languages, track names, and forced/default flags) from a donor .mkv or .mks
+    /// into a local .mks file using the bundled mkvmerge.exe. Returns null if extraction fails or the donor is missing.
+    /// </summary>
+    public async Task<string?> ExtractPgsSubtitlesAsync(string donorPath, string outputMksPath, CancellationToken cancellationToken = default)
+    {
+        if (!fileSystem.FileExists(donorPath))
+        {
+            logger.Log($"[Subtitles] Donor file not found: '{donorPath}'. Skipping subtitle extraction.");
+            return null;
+        }
+        string mkvmergeExe = Path.Combine(settings.ToolsetDirectory, "mkvmerge.exe");
+        if (!fileSystem.FileExists(mkvmergeExe))
+        {
+            mkvmergeExe = "mkvmerge.exe";
+        }
+        logger.Log($"[Subtitles] Extracting subtitle tracks from '{Path.GetFileName(donorPath)}'...");
+        string args = $"--no-video --no-audio --no-chapters --no-attachments --no-global-tags --no-track-tags -o \"{outputMksPath}\" \"{donorPath}\"";
+        (int exitCode, string stdout, string stderr) = await processRunner.RunAsync(mkvmergeExe, args, cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (exitCode <= 1 && fileSystem.FileExists(outputMksPath))
+        {
+            logger.Log($"[Subtitles] Extracted donor subtitles to '{Path.GetFileName(outputMksPath)}'.");
+            return outputMksPath;
+        }
+        string detail = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+        logger.Log($"[Subtitles] mkvmerge failed (exit {exitCode}): {detail.Trim()}");
+        return null;
+    }
+
+    public bool UpdateMuxJson(string projectMkv3dDir, string? customEac3File, IReadOnlyList<string> companionFiles, string? stolenSubsMks = null)
     {
         bool anyUpdated = false;
         foreach (string targetName in _mux3DOptionsFiles)
@@ -252,7 +281,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
             {
                 continue;
             }
-            if (this.UpdateSingleMuxJson(jsonPath, projectMkv3dDir, customEac3File, companionFiles))
+            if (this.UpdateSingleMuxJson(jsonPath, projectMkv3dDir, customEac3File, companionFiles, stolenSubsMks))
             {
                 anyUpdated = true;
             }
@@ -263,7 +292,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
     [GeneratedRegex(@"(?m)^Return\(last\)")]
     private static partial Regex AvsEndRegex();
 
-    private bool UpdateSingleMuxJson(string jsonPath, string projectMkv3dDir, string? customEac3File, IReadOnlyList<string> companionFiles)
+    private bool UpdateSingleMuxJson(string jsonPath, string projectMkv3dDir, string? customEac3File, IReadOnlyList<string> companionFiles, string? stolenSubsMks)
     {
         try
         {
@@ -422,6 +451,16 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
                     }
                     arguments.Add(Path.GetFileName(destCompanion));
                 }
+            }
+            if (!string.IsNullOrEmpty(stolenSubsMks) && fileSystem.FileExists(stolenSubsMks))
+            {
+                string destSubs = Path.Combine(projectMkv3dDir, Path.GetFileName(stolenSubsMks));
+                if (!destSubs.Equals(stolenSubsMks, StringComparison.OrdinalIgnoreCase))
+                {
+                    fileSystem.CopyFile(stolenSubsMks, destSubs, overwrite: true);
+                }
+                logger.Log($"[Mux Options] Injecting stolen PGS subtitles: {Path.GetFileName(destSubs)}");
+                arguments.Add(Path.GetFileName(destSubs));
             }
             string outputJson = JsonSerializer.Serialize(arguments, _writeOptions);
             fileSystem.WriteAllText(jsonPath, outputJson);

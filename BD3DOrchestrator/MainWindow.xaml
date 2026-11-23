@@ -10,6 +10,7 @@
         mc:Ignorable="d" d:DataContext="{d:DesignInstance {x:Type local:MainWindowViewModel}}">
     <Window.Resources>
         <local:NegatedBooleanConverter x:Key="NegatedBooleanConverter" />
+        <local:IsNullOrEmptyConverter x:Key="IsNotNullOrEmptyConverter" Invert="True" />
         <Style TargetType="CheckBox" BasedOn="{StaticResource {x:Type CheckBox}}">
             <Setter Property="Margin" Value="0,4,0,4"/>
         </Style>
@@ -64,9 +65,23 @@
                           IsEnabled="{Binding IsExtraQualityAvailable}"
                           Content="{Binding ExtraQualityLabel}"
                           ToolTip="One CRF step below the default; all other settings stay the same."/>
-                <CheckBox IsChecked="{Binding Job.SkipSubtitles}"
-                          Content="Skip subtitles in BD3D2MK3D (uncheck all subtitle streams)"
-                          ToolTip="Skips subtitle demuxing and 3D conversion; useful when redoing a movie and muxing PGS files from a previous run."/>
+                <Grid Margin="0,6,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Steal PGS Subtitles from:" VerticalAlignment="Center" Margin="0,0,8,0"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               ToolTip="Select a previously encoded .mkv or .mks file. BD3D2MK3D will skip subtitle conversion and mux the donor's subtitle tracks instead."/>
+                    <TextBox Grid.Column="1" Text="{Binding Job.SubtitleDonorPath, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalAlignment="Center" Margin="0,0,6,0" IsReadOnly="True"
+                             ToolTip="Optional .mkv or .mks file to steal subtitle tracks from"/>
+                    <Button Grid.Column="2" Content="Browse..." Click="BtnBrowseSubtitleDonor_Click" Margin="0,0,6,0"/>
+                    <Button Grid.Column="3" Content="Clear" Click="BtnClearSubtitleDonor_Click"
+                            IsEnabled="{Binding Job.SubtitleDonorPath, Converter={StaticResource IsNotNullOrEmptyConverter}}"/>
+                </Grid>
             </StackPanel>
         </Border>
         <!-- Log output: a read-only TextBox so lines can be selected and copied across rows; MainWindow caps its length.

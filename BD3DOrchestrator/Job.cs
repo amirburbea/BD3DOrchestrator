@@ -41,14 +41,14 @@ public sealed class Job : ObservableObject
     }
 
     /// <summary>
-    /// Uncheck all subtitle streams in BD3D2MK3D so it skips demuxing/converting them to 3D
-    /// (useful when redoing an encode and muxing PGS files from a previous run).
+    /// Optional .mkv or .mks file to steal PGS subtitle tracks from. When set, BD3D2MK3D skips
+    /// converting subtitles and the donor's subtitle tracks are muxed into the final MKV instead.
     /// </summary>
-    public bool SkipSubtitles
+    public string SubtitleDonorPath
     {
         get;
         set => this.SetField(ref field, value);
-    }
+    } = string.Empty;
 
     /// <summary>Result of inspecting the input file; null until something has been loaded.</summary>
     public MediaInspectionResult? Inspection { get; set; }
