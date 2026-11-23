@@ -328,6 +328,34 @@ public sealed class OrchestratorPipelineTests
     }
 
     [Test]
+    public async Task ExtractTracksAsync_LogsProgressMilestonesFromStdout()
+    {
+        FakeFileSystem fs = new();
+        fs.AddFile(@"M:\Old\Movie.mkv");
+        FakeMessageLogger logger = new();
+        FakeProcessRunner runner = new FakeProcessRunner()
+            .EnqueueHandler(_ =>
+            {
+                fs.AddFile(@"P:\Proj\MKV3D\stolen_tracks.mks");
+                return (0, "Progress: 0%\nProgress: 5%\nProgress: 10%\nProgress: 15%\nProgress: 50%\nProgress: 100%\n", "");
+            });
+        OrchestratorPipeline pipeline = new(
+            new() { FfmpegExecutable = @"C:\tools\ffmpeg.exe" },
+            new FakeEncodeProfile { OutputNameTemplate = "{title}.3d.tab.mkv", MkvTitleTemplate = "{title} (3D)" },
+            logger,
+            fs,
+            runner);
+
+        await pipeline.ExtractTracksAsync(@"M:\Old\Movie.mkv", @"P:\Proj\MKV3D\stolen_tracks.mks", includeAudio: true, includeSubtitles: true);
+
+        await Assert.That(logger.Messages).Contains("[Steal] Progress: 10%");
+        await Assert.That(logger.Messages).Contains("[Steal] Progress: 50%");
+        await Assert.That(logger.Messages).Contains("[Steal] Progress: 100%");
+        await Assert.That(logger.Messages).DoesNotContain("[Steal] Progress: 5%");
+        await Assert.That(logger.Messages).DoesNotContain("[Steal] Progress: 15%");
+    }
+
+    [Test]
     public async Task UpdateMuxJson_WithStolenTracksMks_AppendsFileWithoutLanguageOverride()
     {
         FakeFileSystem fs = new();

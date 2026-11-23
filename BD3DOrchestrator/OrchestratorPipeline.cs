@@ -280,7 +280,21 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
             ? (subtitleTrackIds is { Count: > 0 } ? $" --subtitle-tracks {string.Join(',', subtitleTrackIds)}" : "")
             : " --no-subtitles";
         string args = $"--no-video --no-chapters --no-attachments --no-global-tags --no-track-tags{audioFlag}{subFlag} -o \"{outputMksPath}\" \"{donorPath}\"";
-        (int exitCode, string stdout, string stderr) = await processRunner.RunAsync(mkvmergeExe, args, cancellationToken: cancellationToken).ConfigureAwait(false);
+        int nextMilestone = 10;
+        (int exitCode, string stdout, string stderr) = await processRunner.RunAsync(
+            mkvmergeExe,
+            args,
+            onStdout: line =>
+            {
+                if (line.StartsWith("Progress:", StringComparison.OrdinalIgnoreCase) &&
+                    int.TryParse(line.AsSpan("Progress:".Length).Trim().TrimEnd('%'), out int percent) &&
+                    percent >= nextMilestone)
+                {
+                    logger.Log($"[Steal] Progress: {percent}%");
+                    nextMilestone = (percent / 10 + 1) * 10;
+                }
+            },
+            cancellationToken: cancellationToken).ConfigureAwait(false);
         if (exitCode <= 1 && fileSystem.FileExists(outputMksPath))
         {
             logger.Log($"[Steal] Extracted {what} tracks to '{Path.GetFileName(outputMksPath)}'.");
