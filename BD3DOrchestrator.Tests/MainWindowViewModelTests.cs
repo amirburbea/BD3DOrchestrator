@@ -59,5 +59,11 @@ public sealed class MainWindowViewModelTests
         vm.IsNvencAvailable = true;
         await Assert.That(vm.NvencLabel).DoesNotContain("unavailable");
         await Assert.That(vm.NvencLabel).Contains("CQ 20");
+        await Assert.That(vm.Job.UseNvenc).IsTrue();
+
+        vm.Job.MovieTitle = "Old";
+        vm.ResetJob();
+        await Assert.That(vm.Job.MovieTitle).IsEqualTo(string.Empty);
+        await Assert.That(vm.Job.UseNvenc).IsTrue();
     }
 }

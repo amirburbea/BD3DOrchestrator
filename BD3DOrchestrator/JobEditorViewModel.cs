@@ -26,10 +26,12 @@ public sealed class JobEditorViewModel(IEncodeProfile profile, JobRunner? runner
         get;
         set
         {
-            if (this.SetField(ref field, value))
+            if (!this.SetField(ref field, value))
             {
-                this.OnPropertyChanged(nameof(this.NvencLabel));
+                return;
             }
+            this.OnPropertyChanged(nameof(this.NvencLabel));
+            this.Job.UseNvenc = value;
         }
     }
 
@@ -77,6 +79,8 @@ public sealed class JobEditorViewModel(IEncodeProfile profile, JobRunner? runner
     }
 
     public void ClearStealFile() => JobRunner.ClearStealFile(this.Job);
+
+    public void ResetJob() => this.Job = new() { UseNvenc = this.IsNvencAvailable };
 
     public async Task ProbeNvencAsync()
     {

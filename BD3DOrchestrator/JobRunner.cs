@@ -168,7 +168,7 @@ public sealed class JobRunner(
                 {
                     try
                     {
-                        if (timeProvider.GetLocalNow().DateTime - processHandle.StartTime > TimeSpan.FromSeconds(10))
+                        if (timeProvider.GetLocalNow().DateTime - processHandle.StartTime > TimeSpan.FromSeconds(5d))
                         {
                             processHandle.Kill();
                             logger.Log("⚡ [Watchdog] Terminated hung mkvinfo.exe process to let BD3D2MK3D proceed.");

@@ -22,4 +22,6 @@ public sealed class MainWindowViewModel(JobEditorViewModel jobEditor) : Observab
         get;
         set => this.SetField(ref field, value);
     } = "🚀 Auto-Run Pipeline";
+
+    public void ResetJob() => this.JobEditor.ResetJob();
 }

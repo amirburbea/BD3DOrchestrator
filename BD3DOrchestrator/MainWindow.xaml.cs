@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
-using Microsoft.Win32;
 
 namespace BD3DOrchestrator;
 
@@ -141,7 +140,7 @@ public partial class MainWindow : Window
         }
         if (succeeded)
         {
-            this._vm.JobEditor.Job = new();
+            this._vm.ResetJob();
         }
     }
 }
