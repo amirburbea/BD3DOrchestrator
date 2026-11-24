@@ -30,13 +30,13 @@ public partial class MovieDetector(HttpClient httpClient, AppSettings settings, 
         return (raw.Trim(), 0);
     }
 
-    public async Task<MovieInfo> DetectAsync(string path, CancellationToken cancellationToken = default)
+    public async Task<MovieInfo> DetectAsync(string mkvPath, CancellationToken cancellationToken = default)
     {
-        string dir = fileSystem.DirectoryExists(path) ? path : (Path.GetDirectoryName(path) ?? ".");
-        string nameCandidate = Path.GetFileName(path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        string dir = Path.GetDirectoryName(mkvPath) ?? ".";
+        string nameCandidate = Path.GetFileName(mkvPath);
         (string title, int year) = ParseTitleAndYear(nameCandidate);
         // If the file name has no "(yyyy)", check the containing folder name (e.g. "Aladdin (2019)\Aladdin.3d.mvc.mkv").
-        if (year == 0 && !fileSystem.DirectoryExists(path))
+        if (year == 0)
         {
             (_, int folderYear) = ParseTitleAndYear(Path.GetFileName(dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)));
             year = folderYear;

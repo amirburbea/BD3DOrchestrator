@@ -13,23 +13,6 @@ public partial class JobEditor : UserControl
         this.InitializeComponent();
     }
 
-    private void UserControl_DragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = this.ViewModel?.IsEditable == true && e.Data.GetDataPresent(DataFormats.FileDrop)
-            ? DragDropEffects.Copy
-            : DragDropEffects.None;
-        e.Handled = true;
-    }
-
-    private void UserControl_Drop(object sender, DragEventArgs e)
-    {
-        if (this.ViewModel is { IsEditable: true } vm &&
-            e.Data.GetData(DataFormats.FileDrop) is string[] and [{ } droppedPath, ..])
-        {
-            _ = vm.LoadAsync(droppedPath);
-        }
-    }
-
     private void BtnBrowse_Click(object sender, RoutedEventArgs e)
     {
         if (this.ViewModel is not { IsEditable: true } vm)

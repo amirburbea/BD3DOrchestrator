@@ -37,7 +37,7 @@ public partial class MainWindow : Window
         this.AppendLog($"[Settings] FFmpeg: {this._settings.FfmpegExecutable}");
         this.AppendLog($"[Settings] Projects: {this._settings.ProjectDirectory}");
         this.AppendLog($"[Settings] Output: {(string.IsNullOrWhiteSpace(this._settings.OutputDirectory) ? "(project folder)" : this._settings.OutputDirectory)}");
-        this.AppendLog("Ready. Drag & Drop a 3D movie folder or MKV file to begin.");
+        this.AppendLog("Ready. Browse for a 3D MKV file to begin.");
         _ = this._vm.JobEditor.ProbeNvencAsync();
     }
 

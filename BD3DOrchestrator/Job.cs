@@ -10,7 +10,7 @@ public sealed class Job : ObservableObject
     {
         get;
         set => this.SetField(ref field, value);
-    } = "(Or click Browse to select a file from SMB or Local Drive)";
+    } = string.Empty;
 
     public string MovieTitle
     {

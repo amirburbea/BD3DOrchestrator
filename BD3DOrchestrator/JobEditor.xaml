@@ -4,7 +4,6 @@
              xmlns:local="clr-namespace:BD3DOrchestrator"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             AllowDrop="True" Drop="UserControl_Drop" DragOver="UserControl_DragOver"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance {x:Type local:JobEditorViewModel}}">
     <UserControl.Resources>
         <local:IsNullOrEmptyConverter x:Key="IsNotNullOrEmptyConverter" Invert="True" />
@@ -13,36 +12,37 @@
         </Style>
     </UserControl.Resources>
     <StackPanel>
-        <!-- Drop Zone Header -->
-        <Grid Margin="0,0,0,12">
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" CornerRadius="8" Padding="14">
-                <StackPanel>
-                    <TextBlock Text="🎬 Drag &amp; Drop 3D Movie Folder or .MKV File Here" FontSize="15" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" HorizontalAlignment="Center"/>
-                    <TextBlock Text="{Binding Job.InputPath}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" Margin="0,6,0,0" TextTrimming="CharacterEllipsis"/>
-                </StackPanel>
-            </Border>
-            <Rectangle Stroke="{DynamicResource ControlStrongStrokeColorDefaultBrush}" StrokeThickness="1.5" StrokeDashArray="5 3" RadiusX="8" RadiusY="8" IsHitTestVisible="False"/>
-        </Grid>
+        <!-- Source MKV File -->
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
+            <StackPanel IsEnabled="{Binding IsEditable}">
+                <TextBlock Text="Source 3D Movie" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="MKV File:" VerticalAlignment="Center" Margin="0,0,8,0"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                               ToolTip="Select a 3D MVC .mkv file from SMB or a local drive."/>
+                    <TextBox Grid.Column="1" Text="{Binding Job.InputPath, Mode=OneWay}"
+                             VerticalAlignment="Center" Margin="0,0,6,0" IsReadOnly="True"
+                             ToolTip="Selected 3D MVC .mkv file"/>
+                    <Button Grid.Column="2" Content="Browse..." Click="BtnBrowse_Click"/>
+                </Grid>
+            </StackPanel>
+        </Border>
         <!-- Movie Details & Auto-Detection Info -->
         <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition />
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition />
-                    <RowDefinition Height="Auto" />
-                </Grid.RowDefinitions>
+            <StackPanel>
                 <DockPanel LastChildFill="True">
                     <TextBlock Text="Movie Title: " FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
                     <TextBox Text="{Binding Job.MovieTitle, UpdateSourceTrigger=PropertyChanged}"
-                             FontSize="14" FontWeight="SemiBold" Margin="4,0,10,0"
+                             FontSize="14" FontWeight="SemiBold" Margin="4,0,0,0"
                              IsEnabled="{Binding IsEditable}"/>
                 </DockPanel>
-                <TextBlock Grid.Row="1" Text="{Binding Job.DetectionReason}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,0"/>
-                <Button Grid.Column="1" Grid.RowSpan="2" Content="Browse..." Click="BtnBrowse_Click" VerticalAlignment="Center" IsEnabled="{Binding IsEditable}"/>
-            </Grid>
+                <TextBlock Text="{Binding Job.DetectionReason}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,5,0,0"/>
+            </StackPanel>
         </Border>
         <!-- Configuration Options -->
         <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
