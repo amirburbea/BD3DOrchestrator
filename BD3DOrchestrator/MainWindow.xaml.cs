@@ -39,6 +39,7 @@ public partial class MainWindow : Window
         this.AppendLog($"[Settings] Projects: {this._settings.ProjectDirectory}");
         this.AppendLog($"[Settings] Output: {(string.IsNullOrWhiteSpace(this._settings.OutputDirectory) ? "(project folder)" : this._settings.OutputDirectory)}");
         this.AppendLog("Ready. Drag & Drop a 3D movie folder or MKV file to begin.");
+        _ = this._vm.JobEditor.ProbeNvencAsync();
     }
 
     /// <summary>
@@ -108,71 +109,6 @@ public partial class MainWindow : Window
         }
     }
 
-    private void Window_DragOver(object sender, DragEventArgs e)
-    {
-        e.Effects = !this._vm.IsRunning && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
-        e.Handled = true;
-    }
-
-    private void Window_Drop(object sender, DragEventArgs e)
-    {
-        if (!this._vm.IsRunning && e.Data.GetData(DataFormats.FileDrop) is string[] and [{ } droppedPath, ..])
-        {
-            _ = this.LoadAsync(droppedPath);
-        }
-    }
-
-    private void BtnBrowse_Click(object sender, RoutedEventArgs e)
-    {
-        OpenFileDialog fileDlg = new()
-        {
-            Title = "Select 3D MVC MKV File",
-            Filter = "MKV Files (*.mkv)|*.mkv|All Files (*.*)|*.*"
-        };
-        if (fileDlg.ShowDialog() == true && fileDlg.FileName is { Length: not 0 } fileName)
-        {
-            _ = this.LoadAsync(fileName);
-        }
-    }
-
-    private async void BtnBrowseSteal_Click(object sender, RoutedEventArgs e)
-    {
-        OpenFileDialog fileDlg = new()
-        {
-            Title = "Select MKV or MKS to Steal Tracks From",
-            Filter = "MKV / MKS Files (*.mkv;*.mks)|*.mkv;*.mks|All Files (*.*)|*.*"
-        };
-        if (fileDlg.ShowDialog() == true && fileDlg.FileName is { Length: not 0 } fileName)
-        {
-            try
-            {
-                await this._runner.LoadStealFileAsync(this._vm.Job, fileName);
-            }
-            catch (Exception ex)
-            {
-                this.AppendLog($"[Steal] Could not inspect '{fileName}': {ex.Message}");
-            }
-        }
-    }
-
-    private void BtnClearSteal_Click(object sender, RoutedEventArgs e)
-    {
-        JobRunner.ClearStealFile(this._vm.Job);
-    }
-
-    // The window awaits one task and resumes on the UI thread; everything inside the runner runs off it.
-    private async Task LoadAsync(string path)
-    {
-        try
-        {
-            await this._runner.LoadAsync(this._vm.Job, path);
-        }
-        catch (Exception ex)
-        {
-            this.AppendLog($"Could not load '{path}': {ex.Message}");
-        }
-    }
-
     private async void BtnAutoRunAll_Click(object sender, RoutedEventArgs e)
     {
         if (!File.Exists(this._settings.BD3DExecutable))
@@ -180,7 +116,7 @@ public partial class MainWindow : Window
             this.AppendLog($"Error: BD3D2MK3D not found at {this._settings.BD3DExecutable}");
             return;
         }
-        Job job = this._vm.Job;
+        Job job = this._vm.JobEditor.Job;
         if (!job.IsLoaded)
         {
             MessageBox.Show("Please select a movie file first.", "No File Loaded", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -201,11 +137,11 @@ public partial class MainWindow : Window
         finally
         {
             this._vm.IsRunning = false;
-            this._vm.ActionButtonText = "🚀 Auto-Run Pipeline (Demux ➔ Patch AVS ➔ Ingest Audio ➔ Encode & Mux)";
+            this._vm.ActionButtonText = "🚀 Auto-Run Pipeline";
         }
         if (succeeded)
         {
-            this._vm.Job = new();
+            this._vm.JobEditor.Job = new();
         }
     }
 }

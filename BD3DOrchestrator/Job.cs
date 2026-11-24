@@ -41,6 +41,15 @@ public sealed class Job : ObservableObject
     }
 
     /// <summary>
+    /// Encode 10-bit HEVC via NVIDIA NVENC (CQ 20, or CQ 19 with Extra Quality) instead of x264.
+    /// </summary>
+    public bool UseNvenc
+    {
+        get;
+        set => this.SetField(ref field, value);
+    }
+
+    /// <summary>
     /// Optional .mkv or .mks file to steal audio and/or subtitle tracks from.
     /// </summary>
     public string StealPath

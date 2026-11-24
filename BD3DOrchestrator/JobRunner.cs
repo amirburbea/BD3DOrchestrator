@@ -22,6 +22,9 @@ public sealed class JobRunner(
     IProcessManager processManager,
     TimeProvider timeProvider)
 {
+    public Task<bool> ProbeNvencAsync(CancellationToken cancellationToken = default) =>
+        pipeline.ProbeNvencAsync(cancellationToken);
+
     /// <summary>Inspects the input and fills in the job's title, detection result and suggested options.</summary>
     public async Task LoadAsync(Job job, string path, CancellationToken cancellationToken = default)
     {
@@ -108,12 +111,18 @@ public sealed class JobRunner(
         // Snapshot: later edits to the job (or a new job replacing it) can't change a run in progress.
         string titleToUse = job.EffectiveTitle;
         bool applyAvsTweak = job.ApplyAvsTweak;
+        bool useNvenc = job.UseNvenc;
+        int nvencCq = job.UseExtraQuality ? 19 : 20;
         string stealPath = job.StealPath.Trim();
         bool stealAudio = !string.IsNullOrEmpty(stealPath) && job.StealAudio;
         bool stealSubtitles = !string.IsNullOrEmpty(stealPath) && job.StealSubtitles;
         logger.Log($"[Profile] {profile.SourcePath} (hash {profile.Hash}, {profile.Settings.Count} settings) -> output '{profile.OutputNameTemplate}'");
         decimal? crfOverride = null;
-        if (job.UseExtraQuality)
+        if (useNvenc)
+        {
+            logger.Log($"[Profile] NVENC HEVC 10-bit: CQ {nvencCq} (uses ffmpeg hevc_nvenc instead of x264).");
+        }
+        else if (job.UseExtraQuality)
         {
             if (profile is { Crf: { } profileCrf, ExtraQualityCrf: { } extraQualityCrf })
             {
@@ -140,7 +149,7 @@ public sealed class JobRunner(
         // This guarantees complete isolation between multiple parallel instances or manual runs.
         string jobTempDir = Path.Combine(Path.GetTempPath(), "BD3DOrchestrator", $"Job_{Guid.NewGuid():N}");
         fileSystem.CreateDirectory(jobTempDir);
-        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse, crfOverride, stealAudio, stealSubtitles);
+        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse, crfOverride, useNvenc, stealAudio, stealSubtitles);
         ProcessHandle? bd3dProcess = null;
         try
         {
@@ -265,10 +274,18 @@ public sealed class JobRunner(
             }
         }
         pipeline.ApplyOutputNaming(projectFolder, titleToUse);
+        if (useNvenc)
+        {
+            pipeline.PatchForNvenc(projectFolder, nvencCq);
+        }
         try
         {
             string record = $"hash={profile.Hash}{Environment.NewLine}source={profile.SourcePath}{Environment.NewLine}";
-            if (crfOverride is { } recordedCrf)
+            if (useNvenc)
+            {
+                record += $"encoder=hevc_nvenc{Environment.NewLine}nvenc_cq={nvencCq}{Environment.NewLine}";
+            }
+            else if (crfOverride is { } recordedCrf)
             {
                 record += $"x264crf={EncodeProfile.FormatCrf(recordedCrf)}{Environment.NewLine}";
             }
@@ -328,14 +345,16 @@ public sealed class JobRunner(
         }
     }
 
-    private void CreatePluginTclHook(string jobTempDir, string mkvPath, string movieTitle, decimal? crfOverride, bool skipAudio, bool skipSubtitles)
+    private void CreatePluginTclHook(string jobTempDir, string mkvPath, string movieTitle, decimal? crfOverride, bool useNvenc, bool skipAudio, bool skipSubtitles)
     {
         try
         {
-            // Set after the profile block, so it wins over the profile's x264crf (both the saved and the live value).
-            string jobOverrides = crfOverride is { } crf
-                ? $"# --- Per-movie override ---{Environment.NewLine}set ::config(x264crf) {TclMethods.Quote(EncodeProfile.FormatCrf(crf))}{Environment.NewLine}set ::x264crf {TclMethods.Quote(EncodeProfile.FormatCrf(crf))}{Environment.NewLine}"
-                : "";
+            // Set after the profile block, so it wins over the profile's values (both the saved and the live value).
+            string jobOverrides = useNvenc
+                ? $"# --- Per-movie override ---{Environment.NewLine}set ::config(use_x265) 1{Environment.NewLine}set ::use_x265 1{Environment.NewLine}"
+                : crfOverride is { } crf
+                    ? $"# --- Per-movie override ---{Environment.NewLine}set ::config(x264crf) {TclMethods.Quote(EncodeProfile.FormatCrf(crf))}{Environment.NewLine}set ::x264crf {TclMethods.Quote(EncodeProfile.FormatCrf(crf))}{Environment.NewLine}"
+                    : "";
             string skipAudioBlock = skipAudio
                 ? """
                         if {[info exists ::demux(1)] && [info exists ::demux(0)]} {

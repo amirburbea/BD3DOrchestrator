@@ -73,6 +73,7 @@ public static class Program
             .AddSingleton<IValidateOptions<AppSettings>, AppSettingsValidator>()
             .AddSingleton(sp => sp.GetRequiredService<IOptions<AppSettings>>().Value)
             .AddSingleton<IEncodeProfile, EncodeProfile>()
+            .AddSingleton<JobEditorViewModel>()
             .AddSingleton<MainWindowViewModel>()
             .AddSingleton<IMessageLogger, MessageLogger>()
             .AddSingleton<MediaInspector>()

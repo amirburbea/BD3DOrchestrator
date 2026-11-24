@@ -370,4 +370,67 @@ public sealed class OrchestratorPipelineTests
         await Assert.That(json).Contains("stolen_tracks.mks");
         await Assert.That(json).DoesNotContain("--language");
     }
+
+    [Test]
+    public async Task PatchForNvenc_RewritesEncodeCmdTagsAndMuxTrackName()
+    {
+        FakeFileSystem fs = new();
+        fs.AddFile(@"P:\Proj\MKV3D\__ENCODE_3D.cmd", """
+            @echo off
+            set path=C:\tools\plugins64bit;%path%
+            @echo on
+            "C:\tools\x265_x64.exe" --crf 18 --output "MKV3D_3D.265" "__ENCODE_3D_MOVIE.avs"
+            @echo off
+            if exist "__MUX_3D.cmd" cmd /c "__MUX_3D.cmd"
+            """);
+        fs.AddFile(@"P:\Proj\MKV3D\__TAGS_3D.xml", """
+            <Tags>
+              <Tag>
+                <Simple>
+                  <Name>ENCODER</Name>
+                  <String>x265_x64.exe</String>
+                </Simple>
+                <Simple>
+                  <Name>ENCODER_SETTINGS</Name>
+                  <String>--crf 18 --preset slow</String>
+                </Simple>
+              </Tag>
+            </Tags>
+            """);
+        fs.AddFile(@"P:\Proj\MKV3D\__MUX_3D_OPTIONS.json", """["--output","out.mkv","--track-name","0:3D Half-T&B (x265)","--stereo-mode","0:3","--language","0:eng","--default-duration","0:24000/1001p","MKV3D_3D.265"]""");
+        OrchestratorPipeline pipeline = CreatePipeline(fs);
+
+        pipeline.PatchForNvenc(@"P:\Proj\MKV3D", cq: 19);
+
+        string cmd = fs.ReadAllText(@"P:\Proj\MKV3D\__ENCODE_3D.cmd");
+        await Assert.That(cmd).Contains(@"""C:\tools\ffmpeg.exe"" -y -i ""__ENCODE_3D_MOVIE.avs"" -pix_fmt p010le -c:v hevc_nvenc");
+        await Assert.That(cmd).Contains("-cq 19");
+        await Assert.That(cmd).Contains(@"-f hevc ""MKV3D_3D.265""");
+        await Assert.That(cmd).DoesNotContain("x265_x64.exe");
+
+        string tags = fs.ReadAllText(@"P:\Proj\MKV3D\__TAGS_3D.xml");
+        await Assert.That(tags).Contains("ffmpeg (hevc_nvenc)");
+        await Assert.That(tags).Contains("-c:v hevc_nvenc");
+        await Assert.That(tags).DoesNotContain("x265_x64.exe");
+        await Assert.That(tags).DoesNotContain("--crf 18");
+
+        string mux = fs.ReadAllText(@"P:\Proj\MKV3D\__MUX_3D_OPTIONS.json");
+        await Assert.That(mux).Contains("0:3D Half-T&B (HEVC 10-bit NVENC CQ 19)");
+    }
+
+    [Test]
+    [Arguments(0, true)]
+    [Arguments(-1, false)]
+    public async Task ProbeNvencAsync_ReturnsTrueOnlyOnZeroExit(int exitCode, bool expected)
+    {
+        FakeFileSystem fs = new();
+        FakeProcessRunner runner = new FakeProcessRunner().EnqueueResult(exitCode: exitCode);
+        OrchestratorPipeline pipeline = CreatePipeline(fs, runner);
+
+        bool actual = await pipeline.ProbeNvencAsync();
+
+        await Assert.That(actual).IsEqualTo(expected);
+        await Assert.That(runner.Calls[0].Executable).IsEqualTo(@"C:\tools\ffmpeg.exe");
+        await Assert.That(runner.Calls[0].Arguments).Contains("-c:v hevc_nvenc");
+    }
 }

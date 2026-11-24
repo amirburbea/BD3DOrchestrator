@@ -14,6 +14,8 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
 {
     private static readonly string[] _mux3DOptionsFiles = ["__MUX_3D_OPTIONS.json", "_CUSTOM_MUX_3D_OPTIONS.json"];
 
+    private static readonly string[] _tags3DFiles = ["__TAGS_3D.xml", "_CUSTOM_TAGS_3D.xml"];
+
     private static readonly string[] _postProcessFiles = ["__POSTPROCESS_3D.cmd", "_CUSTOM_POSTPROCESS_3D.cmd", "_POSTPROCESS_2D.cmd"];
 
     private static readonly HashSet<string> _trackOptionSwitches =
@@ -27,6 +29,9 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
         "--compression",
         "--audio-tracks",
         "--cues",
+        "--stereo-mode",
+        "--aspect-ratio",
+        "--default-duration",
     ];
 
     private static readonly JsonSerializerOptions _writeOptions = new()
@@ -330,6 +335,108 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
 
     [GeneratedRegex(@"(?m)^Return\(last\)")]
     private static partial Regex AvsEndRegex();
+
+    [GeneratedRegex(@"(@echo on\r?\n)[\s\S]*?(\r?\n@echo off)", RegexOptions.IgnoreCase)]
+    private static partial Regex EncodeCmdBlockRegex();
+
+    [GeneratedRegex(@"(<Name>ENCODER</Name>\s*<String>)[\s\S]*?(</String>)", RegexOptions.IgnoreCase)]
+    private static partial Regex EncoderTagRegex();
+
+    [GeneratedRegex(@"(<Name>ENCODER_SETTINGS</Name>\s*<String>)[\s\S]*?(</String>)", RegexOptions.IgnoreCase)]
+    private static partial Regex EncoderSettingsTagRegex();
+
+    public async Task<bool> ProbeNvencAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            const string args = "-v error -f lavfi -i color=black:s=256x256:d=0.1 -frames:v 1 -pix_fmt p010le -c:v hevc_nvenc -f null -";
+            (int exitCode, _, _) = await processRunner.RunAsync(settings.FfmpegExecutable, args, cancellationToken: cancellationToken).ConfigureAwait(false);
+            return exitCode == 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Rewrites a BD3D2MK3D project generated with <c>use_x265=1</c> to encode 10-bit HEVC via ffmpeg's <c>hevc_nvenc</c>,
+    /// and updates <c>__TAGS_3D.xml</c> + the video track name in <c>__MUX_3D_OPTIONS.json</c> so MediaInfo stays accurate.
+    /// </summary>
+    public void PatchForNvenc(string projectMkv3dDir, int cq)
+    {
+        string nvencFlags = $"-pix_fmt p010le -c:v hevc_nvenc -preset p7 -tune hq -rc vbr -cq {cq} -b:v 0 -multipass fullres -spatial-aq 1 -temporal-aq 1 -rc-lookahead 32 -bf 4 -b_ref_mode middle";
+        string ffmpegCmd = $"\"{settings.FfmpegExecutable}\" -y -i \"__ENCODE_3D_MOVIE.avs\" {nvencFlags} -f hevc \"MKV3D_3D.265\"";
+        string encodeCmdPath = Path.Combine(projectMkv3dDir, "__ENCODE_3D.cmd");
+        if (fileSystem.FileExists(encodeCmdPath))
+        {
+            string cmd = fileSystem.ReadAllText(encodeCmdPath);
+            string patchedCmd = EncodeCmdBlockRegex().Replace(cmd, $"$1{ffmpegCmd}$2", 1);
+            if (!ReferenceEquals(cmd, patchedCmd) && patchedCmd != cmd)
+            {
+                fileSystem.WriteAllText(encodeCmdPath, patchedCmd);
+                logger.Log($"[NVENC] Rewrote __ENCODE_3D.cmd for 10-bit hevc_nvenc (CQ {cq}).");
+            }
+            else
+            {
+                logger.Log("[NVENC] Warning: Could not locate encoder block in __ENCODE_3D.cmd.");
+            }
+        }
+        foreach (string tagsName in _tags3DFiles)
+        {
+            string tagsPath = Path.Combine(projectMkv3dDir, tagsName);
+            if (!fileSystem.FileExists(tagsPath))
+            {
+                continue;
+            }
+            string xml = fileSystem.ReadAllText(tagsPath);
+            string escapedFlags = System.Security.SecurityElement.Escape(nvencFlags) ?? nvencFlags;
+            string patchedXml = EncoderTagRegex().Replace(xml, "$1ffmpeg (hevc_nvenc)$2", 1);
+            patchedXml = EncoderSettingsTagRegex().Replace(patchedXml, $"$1{escapedFlags}$2", 1);
+            if (patchedXml != xml)
+            {
+                fileSystem.WriteAllText(tagsPath, patchedXml);
+            }
+        }
+        foreach (string muxName in _mux3DOptionsFiles)
+        {
+            string jsonPath = Path.Combine(projectMkv3dDir, muxName);
+            if (!fileSystem.FileExists(jsonPath))
+            {
+                continue;
+            }
+            try
+            {
+                JsonDocumentOptions options = new() { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true };
+                List<string> args = [];
+                using (JsonDocument doc = JsonDocument.Parse(fileSystem.ReadAllText(jsonPath), options))
+                {
+                    args.AddRange(doc.RootElement.EnumerateArray().Select(element => element.GetString() ?? ""));
+                }
+                int videoIdx = args.FindIndex(a => a.EndsWith(".265", StringComparison.OrdinalIgnoreCase));
+                if (videoIdx >= 2)
+                {
+                    for (int i = videoIdx - 2; i >= 0; i -= 2)
+                    {
+                        if (!_trackOptionSwitches.Contains(args[i]))
+                        {
+                            break;
+                        }
+                        if (args[i].Equals("--track-name", StringComparison.OrdinalIgnoreCase))
+                        {
+                            args[i + 1] = $"0:3D Half-T&B (HEVC 10-bit NVENC CQ {cq})";
+                            break;
+                        }
+                    }
+                    fileSystem.WriteAllText(jsonPath, JsonSerializer.Serialize(args, _writeOptions));
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.Log($"[NVENC] Warning: Could not update track name in {muxName}: {ex.Message}");
+            }
+        }
+    }
 
     private bool UpdateSingleMuxJson(
         string jsonPath,
