@@ -405,6 +405,7 @@ public sealed class OrchestratorPipelineTests
         string cmd = fs.ReadAllText(@"P:\Proj\MKV3D\__ENCODE_3D.cmd");
         await Assert.That(cmd).Contains(@"""C:\tools\ffmpeg.exe"" -y -i ""__ENCODE_3D_MOVIE.avs"" -pix_fmt p010le -c:v hevc_nvenc");
         await Assert.That(cmd).Contains("-cq 19");
+        await Assert.That(cmd).Contains("-aq-strength 7");
         await Assert.That(cmd).Contains(@"-f hevc ""MKV3D_3D.265""");
         await Assert.That(cmd).DoesNotContain("x265_x64.exe");
 
