@@ -41,7 +41,7 @@ public sealed class Job : ObservableObject
     }
 
     /// <summary>
-    /// Encode 10-bit HEVC via NVIDIA NVENC (CQ 20, or CQ 19 with Extra Quality) instead of x264.
+    /// Encode 10-bit HEVC via NVIDIA NVENC (CQ 19, or CQ 18 with Extra Quality) instead of x264.
     /// </summary>
     public bool UseNvenc
     {

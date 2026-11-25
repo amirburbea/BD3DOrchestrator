@@ -365,7 +365,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
     /// </summary>
     public void PatchForNvenc(string projectMkv3dDir, int cq)
     {
-        string nvencFlags = $"-pix_fmt p010le -c:v hevc_nvenc -preset p7 -tune hq -rc vbr -cq {cq} -b:v 0 -multipass fullres -spatial-aq 1 -aq-strength 7 -temporal-aq 1 -rc-lookahead 32 -bf 4 -b_ref_mode middle";
+        string nvencFlags = $"-vf \"setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,format=p010le\" -c:v hevc_nvenc -preset p7 -tune hq -rc vbr -cq {cq} -b:v 0 -multipass fullres -spatial-aq 1 -aq-strength 4 -temporal-aq 1 -rc-lookahead 32 -bf 4 -b_ref_mode middle -qp_cb_offset -2 -qp_cr_offset -2 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709";
         string ffmpegCmd = $"\"{settings.FfmpegExecutable}\" -y -i \"__ENCODE_3D_MOVIE.avs\" {nvencFlags} -f hevc \"MKV3D_3D.265\"";
         string encodeCmdPath = Path.Combine(projectMkv3dDir, "__ENCODE_3D.cmd");
         if (fileSystem.FileExists(encodeCmdPath))

@@ -112,7 +112,7 @@ public sealed class JobRunner(
         string titleToUse = job.EffectiveTitle;
         bool applyAvsTweak = job.ApplyAvsTweak;
         bool useNvenc = job.UseNvenc;
-        int nvencCq = job.UseExtraQuality ? 19 : 20;
+        int nvencCq = job.UseExtraQuality ? 18 : 19;
         string stealPath = job.StealPath.Trim();
         bool stealAudio = !string.IsNullOrEmpty(stealPath) && job.StealAudio;
         bool stealSubtitles = !string.IsNullOrEmpty(stealPath) && job.StealSubtitles;

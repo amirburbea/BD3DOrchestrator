@@ -36,7 +36,7 @@ public sealed class JobEditorViewModel(IEncodeProfile profile, JobRunner? runner
     }
 
     public string NvencLabel => this.IsNvencAvailable
-        ? "Encode 10-bit HEVC via NVIDIA NVENC (CQ 20, or CQ 19 with Extra Quality)"
+        ? "Encode 10-bit HEVC via NVIDIA NVENC (CQ 19, or CQ 18 with Extra Quality)"
         : "Encode 10-bit HEVC via NVIDIA NVENC (unavailable: no compatible NVIDIA GPU/driver)";
 
     /// <summary>Only a profile that encodes x264 in CRF mode above 0 has a lower CRF to step down to.</summary>

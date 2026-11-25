@@ -403,9 +403,11 @@ public sealed class OrchestratorPipelineTests
         pipeline.PatchForNvenc(@"P:\Proj\MKV3D", cq: 19);
 
         string cmd = fs.ReadAllText(@"P:\Proj\MKV3D\__ENCODE_3D.cmd");
-        await Assert.That(cmd).Contains(@"""C:\tools\ffmpeg.exe"" -y -i ""__ENCODE_3D_MOVIE.avs"" -pix_fmt p010le -c:v hevc_nvenc");
+        await Assert.That(cmd).Contains(@"""C:\tools\ffmpeg.exe"" -y -i ""__ENCODE_3D_MOVIE.avs"" -vf ""setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,format=p010le"" -c:v hevc_nvenc");
         await Assert.That(cmd).Contains("-cq 19");
-        await Assert.That(cmd).Contains("-aq-strength 7");
+        await Assert.That(cmd).Contains("-aq-strength 4");
+        await Assert.That(cmd).Contains("-qp_cb_offset -2 -qp_cr_offset -2");
+        await Assert.That(cmd).Contains("-color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709");
         await Assert.That(cmd).Contains(@"-f hevc ""MKV3D_3D.265""");
         await Assert.That(cmd).DoesNotContain("x265_x64.exe");
 
