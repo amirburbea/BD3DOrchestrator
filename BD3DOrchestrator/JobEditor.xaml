@@ -12,17 +12,16 @@
         </Style>
     </UserControl.Resources>
     <StackPanel>
-        <!-- Source MKV File -->
+        <!-- Source MKV File & Movie Details -->
         <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
-            <StackPanel IsEnabled="{Binding IsEditable}">
-                <TextBlock Text="Source 3D Movie" FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" Margin="0,0,0,6"/>
-                <Grid>
+            <StackPanel>
+                <Grid IsEnabled="{Binding IsEditable}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="MKV File:" VerticalAlignment="Center" Margin="0,0,8,0"
+                    <TextBlock Grid.Column="0" Text="Source MVC MKV:" VerticalAlignment="Center" Margin="0,0,8,0"
                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                ToolTip="Select a 3D MVC .mkv file from SMB or a local drive."/>
                     <TextBox Grid.Column="1" Text="{Binding Job.InputPath, Mode=OneWay}"
@@ -30,12 +29,7 @@
                              ToolTip="Selected 3D MVC .mkv file"/>
                     <Button Grid.Column="2" Content="Browse..." Click="BtnBrowse_Click"/>
                 </Grid>
-            </StackPanel>
-        </Border>
-        <!-- Movie Details & Auto-Detection Info -->
-        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,12">
-            <StackPanel>
-                <DockPanel LastChildFill="True">
+                <DockPanel LastChildFill="True" Margin="0,8,0,0">
                     <TextBlock Text="Movie Title: " FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
                     <TextBox Text="{Binding Job.MovieTitle, UpdateSourceTrigger=PropertyChanged}"
                              FontSize="14" FontWeight="SemiBold" Margin="4,0,0,0"
@@ -76,7 +70,7 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Donor File:" VerticalAlignment="Center" Margin="0,0,8,0"
+                    <TextBlock Grid.Column="0" Text="Donor MKV:" VerticalAlignment="Center" Margin="0,0,8,0"
                                Foreground="{DynamicResource TextFillColorPrimaryBrush}"
                                ToolTip="Select a previously encoded .mkv or .mks file to steal audio and/or subtitle tracks from."/>
                     <TextBox Grid.Column="1" Text="{Binding Job.StealPath, UpdateSourceTrigger=PropertyChanged}"
