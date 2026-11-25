@@ -263,13 +263,14 @@ public sealed class JobRunnerTests
     }
 
     [Test]
-    [Arguments(false, 17)]
-    [Arguments(true, 16)]
-    public async Task RunAsync_UseQsv_SetsUseX265InHookAndPatchesEncodeCmd(bool extraQuality, int expectedIcq)
+    [Arguments(false, 17, 0, true)]
+    [Arguments(true, 16, -9, false)]
+    public async Task RunAsync_UseQsv_SetsUseX265InHookAndPatchesEncodeCmd(bool extraQuality, int expectedIcq, int vppProbeExitCode, bool expectVpp)
     {
         using Harness h = new();
         h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
         h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D.cmd", "@echo on\r\n\"x265_x64.exe\" --output \"MKV3D_3D.265\" \"__ENCODE_3D_MOVIE.avs\"\r\n@echo off\r\n");
+        h.ProcessRunner.EnqueueResult(exitCode: vppProbeExitCode);
         Job job = LoadedJob("Up");
         job.UseQsv = true;
         job.UseExtraQuality = extraQuality;
@@ -279,8 +280,10 @@ public sealed class JobRunnerTests
         await Assert.That(hook).Contains("set ::config(use_x265) 1");
         await Assert.That(hook).Contains("set ::use_x265 1");
         await Assert.That(hook).DoesNotContain("x264crf \"17\"");
-        await Assert.That(h.Fs.ReadAllText(@"P:\Proj\Up\MKV3D\__ENCODE_3D.cmd")).Contains("-c:v hevc_qsv");
-        await Assert.That(h.Fs.ReadAllText(@"P:\Proj\Up\MKV3D\__ENCODE_3D.cmd")).Contains($"-global_quality {expectedIcq}");
+        string cmd = h.Fs.ReadAllText(@"P:\Proj\Up\MKV3D\__ENCODE_3D.cmd");
+        await Assert.That(cmd).Contains("-c:v hevc_qsv");
+        await Assert.That(cmd).Contains($"-global_quality {expectedIcq}");
+        await Assert.That(cmd.Contains("vpp_qsv")).IsEqualTo(expectVpp);
         await Assert.That(h.Fs.ReadAllText(@"P:\Proj\Up\MKV3D\encode_profile.txt")).Contains($"qsv_icq={expectedIcq}");
     }
 

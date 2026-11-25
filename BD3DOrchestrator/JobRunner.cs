@@ -289,7 +289,8 @@ public sealed class JobRunner(
         }
         else if (useQsv)
         {
-            pipeline.PatchForQsv(projectFolder, qsvIcq);
+            bool useQsvVpp = await pipeline.ProbeQsvVppAsync(cancellationToken).ConfigureAwait(false);
+            pipeline.PatchForQsv(projectFolder, qsvIcq, useQsvVpp);
         }
         try
         {

@@ -469,7 +469,7 @@ public sealed class OrchestratorPipelineTests
         pipeline.PatchForQsv(@"P:\Proj\MKV3D", icq: 17);
 
         string cmd = fs.ReadAllText(@"P:\Proj\MKV3D\__ENCODE_3D.cmd");
-        await Assert.That(cmd).Contains(@"""C:\tools\ffmpeg.exe"" -y -i ""__ENCODE_3D_MOVIE.avs"" -init_hw_device dxva2=dx -init_hw_device qsv=hw@dx -filter_hw_device hw -vf ""setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,format=nv12,hwupload=extra_hw_frames=16,vpp_qsv=format=p010le:out_color_matrix=bt709:out_color_primaries=bt709:out_color_transfer=bt709:out_range=tv"" -c:v hevc_qsv");
+        await Assert.That(cmd).Contains(@"""C:\tools\ffmpeg.exe"" -y -i ""__ENCODE_3D_MOVIE.avs"" -vf ""setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,format=p010le"" -c:v hevc_qsv");
         await Assert.That(cmd).Contains("-low_power 0 -preset veryslow -global_quality 17");
         await Assert.That(cmd).Contains("-extbrc 1 -look_ahead_depth 32");
         await Assert.That(cmd).Contains("-color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709");
@@ -500,5 +500,39 @@ public sealed class OrchestratorPipelineTests
         await Assert.That(actual).IsEqualTo(expected);
         await Assert.That(runner.Calls[0].Executable).IsEqualTo(@"C:\tools\ffmpeg.exe");
         await Assert.That(runner.Calls[0].Arguments).Contains("-c:v hevc_qsv");
+    }
+
+    [Test]
+    [Arguments(0, true)]
+    [Arguments(-9, false)]
+    public async Task ProbeQsvVppAsync_ReturnsTrueOnlyOnZeroExit(int exitCode, bool expected)
+    {
+        FakeFileSystem fs = new();
+        FakeProcessRunner runner = new FakeProcessRunner().EnqueueResult(exitCode: exitCode);
+        OrchestratorPipeline pipeline = CreatePipeline(fs, runner);
+
+        bool actual = await pipeline.ProbeQsvVppAsync();
+
+        await Assert.That(actual).IsEqualTo(expected);
+        await Assert.That(runner.Calls[0].Arguments).Contains("vpp_qsv=format=p010le");
+    }
+
+    [Test]
+    public async Task PatchForQsv_WithVppEnabled_UsesDxva2AndVppQsv()
+    {
+        FakeFileSystem fs = new();
+        fs.AddFile(@"P:\Proj\MKV3D\__ENCODE_3D.cmd", """
+            @echo off
+            @echo on
+            "C:\tools\x265_x64.exe" --output "MKV3D_3D.265" "__ENCODE_3D_MOVIE.avs"
+            @echo off
+            """);
+        OrchestratorPipeline pipeline = CreatePipeline(fs);
+
+        pipeline.PatchForQsv(@"P:\Proj\MKV3D", icq: 17, useVpp: true);
+
+        string cmd = fs.ReadAllText(@"P:\Proj\MKV3D\__ENCODE_3D.cmd");
+        await Assert.That(cmd).Contains("-init_hw_device dxva2=dx -init_hw_device qsv=hw@dx -filter_hw_device hw");
+        await Assert.That(cmd).Contains("vpp_qsv=format=p010le:out_color_matrix=bt709:out_color_primaries=bt709:out_color_transfer=bt709:out_range=tv");
     }
 }
