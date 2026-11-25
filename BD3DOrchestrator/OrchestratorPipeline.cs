@@ -381,7 +381,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
     /// </summary>
     public void PatchForQsv(string projectMkv3dDir, int icq)
     {
-        string qsvFlags = $"-vf \"setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,format=p010le\" -c:v hevc_qsv -low_power 0 -preset veryslow -global_quality {icq} -extbrc 1 -look_ahead_depth 32 -bf 4 -b_strategy 1 -adaptive_i 1 -adaptive_b 1 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709";
+        string qsvFlags = $"-init_hw_device dxva2=dx -init_hw_device qsv=hw@dx -filter_hw_device hw -vf \"setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,format=nv12,hwupload=extra_hw_frames=16,vpp_qsv=format=p010le:out_color_matrix=bt709:out_color_primaries=bt709:out_color_transfer=bt709:out_range=tv\" -c:v hevc_qsv -low_power 0 -preset veryslow -global_quality {icq} -extbrc 1 -look_ahead_depth 32 -bf 4 -b_strategy 1 -adaptive_i 1 -adaptive_b 1 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709";
         this.PatchForHardwareHevc(projectMkv3dDir, "hevc_qsv", qsvFlags, "[QSV]", $"10-bit hevc_qsv (ICQ {icq})", $"0:3D Half-T&B (HEVC 10-bit QSV ICQ {icq})");
     }
 
