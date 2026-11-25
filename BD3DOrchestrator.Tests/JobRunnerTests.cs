@@ -138,6 +138,22 @@ public sealed class JobRunnerTests
         await Assert.That(job.Inspection!.MkvPath).IsEqualTo(@"M:\Movies\Frozen.3d.mvc.mkv");
     }
 
+    [Test]
+    public async Task LoadAsync_LogsConsolidatedAudioAndSubtitleProbeSummary()
+    {
+        using Harness h = new(_ => new TmdbSearchResults(new TmdbMovie("Avatar", "2009-12-18", 878)).ToResponse());
+        h.Fs.AddFile(@"C:\tools\mkvmerge.exe");
+        h.Fs.AddFile(@"M:\Movies\Avatar.3d.mvc.mkv");
+        h.ProcessRunner.EnqueueResult(
+            stdout: """{"tracks":[{"id":1,"type":"audio","codec":"DTS-HD Master Audio"},{"id":2,"type":"subtitles","codec":"HDMV PGS","properties":{"codec_id":"S_HDMV/PGS"}},{"id":3,"type":"subtitles","codec":"SubRip/SRT","properties":{"codec_id":"S_TEXT/UTF8"}}]}"""
+        );
+        Job job = new();
+
+        await h.Runner.LoadAsync(job, @"M:\Movies\Avatar.3d.mvc.mkv");
+
+        await Assert.That(h.Logger.Messages).Contains("Audio: DTS, Subtitles: PGS,SRT (preserving embedded SRT)");
+    }
+
     // ---- RunAsync ----
 
     [Test]

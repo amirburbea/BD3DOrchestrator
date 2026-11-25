@@ -74,10 +74,10 @@ public sealed class JobRunner(
                 logger.Log($"  - {Path.GetFileName(file)}");
             }
         }
-        if (inspection.EmbeddedSrtTrackIds.Count > 0)
-        {
-            logger.Log($"Detected {inspection.EmbeddedSrtTrackIds.Count} embedded SRT subtitle track(s) in MKV -> Will preserve in final mux.");
-        }
+        string audioSummary = inspection.AudioCodecs.Count > 0 ? string.Join(",", inspection.AudioCodecs) : "None";
+        string subtitleSummary = inspection.SubtitleFormats.Count > 0 ? string.Join(",", inspection.SubtitleFormats) : "None";
+        string srtNote = inspection.EmbeddedSrtTrackIds.Count > 0 ? " (preserving embedded SRT)" : "";
+        logger.Log($"Audio: {audioSummary}, Subtitles: {subtitleSummary}{srtNote}");
         logger.Log("Ready. Click 'Auto-Run Pipeline' to perform the complete workflow unattended.");
     }
 

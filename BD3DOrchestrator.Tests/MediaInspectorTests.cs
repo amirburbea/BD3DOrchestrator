@@ -105,5 +105,7 @@ public sealed class MediaInspectorTests
         MediaInspectionResult result = await inspector.InspectAsync(@"M:\Movies\Movie.3d.mvc.mkv");
 
         await Assert.That(result.EmbeddedSrtTrackIds).IsEquivalentTo([3, 4]);
+        await Assert.That(result.AudioCodecs).IsEquivalentTo(["AC3"]);
+        await Assert.That(result.SubtitleFormats).IsEquivalentTo(["PGS", "SRT"]);
     }
 }

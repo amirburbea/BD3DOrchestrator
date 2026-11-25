@@ -8,6 +8,8 @@ public sealed class MediaInspectionResult
     public string MovieTitle { get; set; } = string.Empty;
     public bool HasDtsAudio { get; set; }
     public bool HasDolbyAudio { get; set; }
+    public List<string> AudioCodecs { get; } = [];
+    public List<string> SubtitleFormats { get; } = [];
     public List<string> CompanionFiles { get; } = [];
     public List<int> EmbeddedSrtTrackIds { get; } = [];
 }

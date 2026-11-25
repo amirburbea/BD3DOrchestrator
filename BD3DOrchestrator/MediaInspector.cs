@@ -90,12 +90,13 @@ public partial class MediaInspector(AppSettings settings, IFileSystem fileSystem
                     {
                         string type = track.TryGetProperty("type", out JsonElement tElem) ? (tElem.GetString() ?? "") : "";
                         string codec = track.TryGetProperty("codec", out JsonElement cElem) ? (cElem.GetString() ?? "") : "";
+                        string codecId = track.TryGetProperty("properties", out JsonElement props) &&
+                                         props.TryGetProperty("codec_id", out JsonElement cidElem)
+                            ? (cidElem.GetString() ?? "")
+                            : "";
                         if (type.Equals("subtitles", StringComparison.OrdinalIgnoreCase))
                         {
-                            string codecId = track.TryGetProperty("properties", out JsonElement props) &&
-                                             props.TryGetProperty("codec_id", out JsonElement cidElem)
-                                ? (cidElem.GetString() ?? "")
-                                : "";
+                            AddDistinctIgnoreCase(result.SubtitleFormats, FormatSubtitleFormat(codec, codecId));
                             if ((codecId.Equals("S_TEXT/UTF8", StringComparison.OrdinalIgnoreCase) ||
                                  codec.Contains("SRT", StringComparison.OrdinalIgnoreCase)) &&
                                 track.TryGetProperty("id", out JsonElement idElem) &&
@@ -109,6 +110,7 @@ public partial class MediaInspector(AppSettings settings, IFileSystem fileSystem
                         {
                             continue;
                         }
+                        AddDistinctIgnoreCase(result.AudioCodecs, FormatAudioCodec(codec, codecId));
                         if (codec.Contains("DTS", StringComparison.OrdinalIgnoreCase))
                         {
                             result.HasDtsAudio = true;
@@ -192,5 +194,76 @@ public partial class MediaInspector(AppSettings settings, IFileSystem fileSystem
         catch
         {
         }
+    }
+
+    private static void AddDistinctIgnoreCase(List<string> list, string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+        foreach (string existing in list)
+        {
+            if (existing.Equals(value, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+        }
+        list.Add(value);
+    }
+
+    private static string FormatAudioCodec(string codec, string codecId)
+    {
+        if (codec.Contains("DTS", StringComparison.OrdinalIgnoreCase) || codecId.Equals("A_DTS", StringComparison.OrdinalIgnoreCase))
+        {
+            return "DTS";
+        }
+        if (codec.Contains("E-AC-3", StringComparison.OrdinalIgnoreCase) || codec.Contains("EAC3", StringComparison.OrdinalIgnoreCase) || codecId.Equals("A_EAC3", StringComparison.OrdinalIgnoreCase))
+        {
+            return "EAC3";
+        }
+        if (codec.Contains("TrueHD", StringComparison.OrdinalIgnoreCase) || codecId.Equals("A_TRUEHD", StringComparison.OrdinalIgnoreCase))
+        {
+            return "TrueHD";
+        }
+        if (codec.Contains("AC-3", StringComparison.OrdinalIgnoreCase) || codec.Contains("AC3", StringComparison.OrdinalIgnoreCase) || codecId.Equals("A_AC3", StringComparison.OrdinalIgnoreCase))
+        {
+            return "AC3";
+        }
+        if (codec.Contains("AAC", StringComparison.OrdinalIgnoreCase) || codecId.StartsWith("A_AAC", StringComparison.OrdinalIgnoreCase))
+        {
+            return "AAC";
+        }
+        if (codec.Contains("FLAC", StringComparison.OrdinalIgnoreCase) || codecId.Equals("A_FLAC", StringComparison.OrdinalIgnoreCase))
+        {
+            return "FLAC";
+        }
+        if (codec.Contains("PCM", StringComparison.OrdinalIgnoreCase) || codecId.StartsWith("A_PCM", StringComparison.OrdinalIgnoreCase))
+        {
+            return "PCM";
+        }
+        return codec;
+    }
+
+    private static string FormatSubtitleFormat(string codec, string codecId)
+    {
+        if (codecId.Equals("S_HDMV/PGS", StringComparison.OrdinalIgnoreCase) || codec.Contains("PGS", StringComparison.OrdinalIgnoreCase))
+        {
+            return "PGS";
+        }
+        if (codecId.Equals("S_TEXT/UTF8", StringComparison.OrdinalIgnoreCase) || codec.Contains("SRT", StringComparison.OrdinalIgnoreCase))
+        {
+            return "SRT";
+        }
+        if (codecId.Equals("S_TEXT/ASS", StringComparison.OrdinalIgnoreCase) || codecId.Equals("S_TEXT/SSA", StringComparison.OrdinalIgnoreCase) ||
+            codec.Contains("ASS", StringComparison.OrdinalIgnoreCase) || codec.Contains("SSA", StringComparison.OrdinalIgnoreCase))
+        {
+            return "ASS";
+        }
+        if (codecId.Equals("S_VOBSUB", StringComparison.OrdinalIgnoreCase) || codec.Contains("VobSub", StringComparison.OrdinalIgnoreCase))
+        {
+            return "VobSub";
+        }
+        return codec;
     }
 }
