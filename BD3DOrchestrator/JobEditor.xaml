@@ -30,7 +30,7 @@
                     <Button Grid.Column="2" Content="Browse..." Click="BtnBrowse_Click"/>
                 </Grid>
                 <DockPanel LastChildFill="True" Margin="0,8,0,0">
-                    <TextBlock Text="Movie Title: " FontSize="14" FontWeight="SemiBold" Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
+                    <TextBlock Text="Movie Title: " Foreground="{DynamicResource TextFillColorPrimaryBrush}" VerticalAlignment="Center"/>
                     <TextBox Text="{Binding Job.MovieTitle, UpdateSourceTrigger=PropertyChanged}"
                              FontSize="14" FontWeight="SemiBold" Margin="4,0,0,0"
                              IsEnabled="{Binding IsEditable}"/>
