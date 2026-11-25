@@ -116,7 +116,8 @@ public sealed class JobRunner(
         bool applyAvsTweak = job.ApplyAvsTweak;
         bool useNvenc = job.UseNvenc;
         bool useQsv = !useNvenc && job.UseQsv;
-        int hevcQuality = job.UseExtraQuality ? 18 : 19;
+        int nvencCq = job.UseExtraQuality ? 18 : 19;
+        int qsvIcq = job.UseExtraQuality ? 16 : 17;
         string stealPath = job.StealPath.Trim();
         bool stealAudio = !string.IsNullOrEmpty(stealPath) && job.StealAudio;
         bool stealSubtitles = !string.IsNullOrEmpty(stealPath) && job.StealSubtitles;
@@ -124,11 +125,11 @@ public sealed class JobRunner(
         decimal? crfOverride = null;
         if (useNvenc)
         {
-            logger.Log($"[Profile] NVENC HEVC 10-bit: CQ {hevcQuality} (uses ffmpeg hevc_nvenc instead of x264).");
+            logger.Log($"[Profile] NVENC HEVC 10-bit: CQ {nvencCq} (uses ffmpeg hevc_nvenc instead of x264).");
         }
         else if (useQsv)
         {
-            logger.Log($"[Profile] QSV HEVC 10-bit: ICQ {hevcQuality} (uses ffmpeg hevc_qsv instead of x264).");
+            logger.Log($"[Profile] QSV HEVC 10-bit: ICQ {qsvIcq} (uses ffmpeg hevc_qsv instead of x264).");
         }
         else if (job.UseExtraQuality)
         {
@@ -284,22 +285,22 @@ public sealed class JobRunner(
         pipeline.ApplyOutputNaming(projectFolder, titleToUse);
         if (useNvenc)
         {
-            pipeline.PatchForNvenc(projectFolder, hevcQuality);
+            pipeline.PatchForNvenc(projectFolder, nvencCq);
         }
         else if (useQsv)
         {
-            pipeline.PatchForQsv(projectFolder, hevcQuality);
+            pipeline.PatchForQsv(projectFolder, qsvIcq);
         }
         try
         {
             string record = $"hash={profile.Hash}{Environment.NewLine}source={profile.SourcePath}{Environment.NewLine}";
             if (useNvenc)
             {
-                record += $"encoder=hevc_nvenc{Environment.NewLine}nvenc_cq={hevcQuality}{Environment.NewLine}";
+                record += $"encoder=hevc_nvenc{Environment.NewLine}nvenc_cq={nvencCq}{Environment.NewLine}";
             }
             else if (useQsv)
             {
-                record += $"encoder=hevc_qsv{Environment.NewLine}qsv_icq={hevcQuality}{Environment.NewLine}";
+                record += $"encoder=hevc_qsv{Environment.NewLine}qsv_icq={qsvIcq}{Environment.NewLine}";
             }
             else if (crfOverride is { } recordedCrf)
             {

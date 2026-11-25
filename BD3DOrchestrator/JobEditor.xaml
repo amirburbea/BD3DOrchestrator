@@ -56,7 +56,7 @@
                 <CheckBox IsChecked="{Binding Job.UseQsv}"
                           IsEnabled="{Binding IsQsvAvailable}"
                           Content="{Binding QsvLabel}"
-                          ToolTip="Uses ffmpeg hevc_qsv (low-power 10-bit) instead of x264. Only enabled when 10-bit hevc_qsv works on this PC."/>
+                          ToolTip="Uses ffmpeg hevc_qsv (10-bit VME) instead of x264. Only enabled when 10-bit hevc_qsv works on this PC."/>
             </StackPanel>
         </Border>
         <!-- Steal Tracks from Previous Encode -->

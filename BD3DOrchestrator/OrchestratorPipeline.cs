@@ -376,12 +376,12 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
     }
 
     /// <summary>
-    /// Rewrites a BD3D2MK3D project generated with <c>use_x265=1</c> to encode 10-bit HEVC via ffmpeg's <c>hevc_qsv</c> (low-power VDENC),
+    /// Rewrites a BD3D2MK3D project generated with <c>use_x265=1</c> to encode 10-bit HEVC via ffmpeg's <c>hevc_qsv</c> (VME mode),
     /// and updates <c>__TAGS_3D.xml</c> + the video track name in <c>__MUX_3D_OPTIONS.json</c> so MediaInfo stays accurate.
     /// </summary>
     public void PatchForQsv(string projectMkv3dDir, int icq)
     {
-        string qsvFlags = $"-vf \"setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,format=p010le\" -c:v hevc_qsv -low_power 1 -preset veryslow -global_quality {icq} -extbrc 1 -look_ahead_depth 32 -bf 4 -b_strategy 1 -adaptive_i 1 -adaptive_b 1 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709";
+        string qsvFlags = $"-vf \"setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,format=p010le\" -c:v hevc_qsv -low_power 0 -preset veryslow -global_quality {icq} -extbrc 1 -look_ahead_depth 32 -bf 4 -b_strategy 1 -adaptive_i 1 -adaptive_b 1 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709";
         this.PatchForHardwareHevc(projectMkv3dDir, "hevc_qsv", qsvFlags, "[QSV]", $"10-bit hevc_qsv (ICQ {icq})", $"0:3D Half-T&B (HEVC 10-bit QSV ICQ {icq})");
     }
 

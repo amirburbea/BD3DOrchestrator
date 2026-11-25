@@ -56,7 +56,7 @@ public sealed class Job : ObservableObject
     }
 
     /// <summary>
-    /// Encode 10-bit HEVC via Intel Quick Sync (ICQ 19, or ICQ 18 with Extra Quality) instead of x264.
+    /// Encode 10-bit HEVC via Intel Quick Sync (ICQ 17, or ICQ 16 with Extra Quality) instead of x264.
     /// </summary>
     public bool UseQsv
     {

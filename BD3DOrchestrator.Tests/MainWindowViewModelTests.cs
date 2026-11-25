@@ -77,7 +77,7 @@ public sealed class MainWindowViewModelTests
 
         vm.IsQsvAvailable = true;
         await Assert.That(vm.QsvLabel).DoesNotContain("unavailable");
-        await Assert.That(vm.QsvLabel).Contains("ICQ 19");
+        await Assert.That(vm.QsvLabel).Contains("ICQ 17");
         await Assert.That(vm.Job.UseQsv).IsTrue();
         await Assert.That(vm.Job.UseNvenc).IsFalse();
 

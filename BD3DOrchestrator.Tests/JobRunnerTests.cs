@@ -263,8 +263,8 @@ public sealed class JobRunnerTests
     }
 
     [Test]
-    [Arguments(false, 19)]
-    [Arguments(true, 18)]
+    [Arguments(false, 17)]
+    [Arguments(true, 16)]
     public async Task RunAsync_UseQsv_SetsUseX265InHookAndPatchesEncodeCmd(bool extraQuality, int expectedIcq)
     {
         using Harness h = new();
