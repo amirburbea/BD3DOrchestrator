@@ -25,6 +25,9 @@ public sealed class JobRunner(
     public Task<bool> ProbeNvencAsync(CancellationToken cancellationToken = default) =>
         pipeline.ProbeNvencAsync(cancellationToken);
 
+    public Task<bool> ProbeQsvAsync(CancellationToken cancellationToken = default) =>
+        pipeline.ProbeQsvAsync(cancellationToken);
+
     /// <summary>Inspects the input and fills in the job's title, detection result and suggested options.</summary>
     public async Task LoadAsync(Job job, string path, CancellationToken cancellationToken = default)
     {
@@ -112,7 +115,8 @@ public sealed class JobRunner(
         string titleToUse = job.EffectiveTitle;
         bool applyAvsTweak = job.ApplyAvsTweak;
         bool useNvenc = job.UseNvenc;
-        int nvencCq = job.UseExtraQuality ? 18 : 19;
+        bool useQsv = !useNvenc && job.UseQsv;
+        int hevcQuality = job.UseExtraQuality ? 18 : 19;
         string stealPath = job.StealPath.Trim();
         bool stealAudio = !string.IsNullOrEmpty(stealPath) && job.StealAudio;
         bool stealSubtitles = !string.IsNullOrEmpty(stealPath) && job.StealSubtitles;
@@ -120,7 +124,11 @@ public sealed class JobRunner(
         decimal? crfOverride = null;
         if (useNvenc)
         {
-            logger.Log($"[Profile] NVENC HEVC 10-bit: CQ {nvencCq} (uses ffmpeg hevc_nvenc instead of x264).");
+            logger.Log($"[Profile] NVENC HEVC 10-bit: CQ {hevcQuality} (uses ffmpeg hevc_nvenc instead of x264).");
+        }
+        else if (useQsv)
+        {
+            logger.Log($"[Profile] QSV HEVC 10-bit: ICQ {hevcQuality} (uses ffmpeg hevc_qsv instead of x264).");
         }
         else if (job.UseExtraQuality)
         {
@@ -149,7 +157,7 @@ public sealed class JobRunner(
         // This guarantees complete isolation between multiple parallel instances or manual runs.
         string jobTempDir = Path.Combine(Path.GetTempPath(), "BD3DOrchestrator", $"Job_{Guid.NewGuid():N}");
         fileSystem.CreateDirectory(jobTempDir);
-        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse, crfOverride, useNvenc, stealAudio, stealSubtitles);
+        this.CreatePluginTclHook(jobTempDir, inspection.MkvPath, titleToUse, crfOverride, useNvenc || useQsv, stealAudio, stealSubtitles);
         ProcessHandle? bd3dProcess = null;
         try
         {
@@ -276,14 +284,22 @@ public sealed class JobRunner(
         pipeline.ApplyOutputNaming(projectFolder, titleToUse);
         if (useNvenc)
         {
-            pipeline.PatchForNvenc(projectFolder, nvencCq);
+            pipeline.PatchForNvenc(projectFolder, hevcQuality);
+        }
+        else if (useQsv)
+        {
+            pipeline.PatchForQsv(projectFolder, hevcQuality);
         }
         try
         {
             string record = $"hash={profile.Hash}{Environment.NewLine}source={profile.SourcePath}{Environment.NewLine}";
             if (useNvenc)
             {
-                record += $"encoder=hevc_nvenc{Environment.NewLine}nvenc_cq={nvencCq}{Environment.NewLine}";
+                record += $"encoder=hevc_nvenc{Environment.NewLine}nvenc_cq={hevcQuality}{Environment.NewLine}";
+            }
+            else if (useQsv)
+            {
+                record += $"encoder=hevc_qsv{Environment.NewLine}qsv_icq={hevcQuality}{Environment.NewLine}";
             }
             else if (crfOverride is { } recordedCrf)
             {

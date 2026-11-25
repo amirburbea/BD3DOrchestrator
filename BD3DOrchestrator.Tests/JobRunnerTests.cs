@@ -229,6 +229,46 @@ public sealed class JobRunnerTests
     }
 
     [Test]
+    public async Task NewJob_HasUseQsvOff_AndHardwareEncodersAreMutuallyExclusive()
+    {
+        Job job = new();
+        await Assert.That(job.UseQsv).IsFalse();
+
+        job.UseNvenc = true;
+        await Assert.That(job.UseQsv).IsFalse();
+
+        job.UseQsv = true;
+        await Assert.That(job.UseQsv).IsTrue();
+        await Assert.That(job.UseNvenc).IsFalse();
+
+        job.UseNvenc = true;
+        await Assert.That(job.UseNvenc).IsTrue();
+        await Assert.That(job.UseQsv).IsFalse();
+    }
+
+    [Test]
+    [Arguments(false, 19)]
+    [Arguments(true, 18)]
+    public async Task RunAsync_UseQsv_SetsUseX265InHookAndPatchesEncodeCmd(bool extraQuality, int expectedIcq)
+    {
+        using Harness h = new();
+        h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
+        h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D.cmd", "@echo on\r\n\"x265_x64.exe\" --output \"MKV3D_3D.265\" \"__ENCODE_3D_MOVIE.avs\"\r\n@echo off\r\n");
+        Job job = LoadedJob("Up");
+        job.UseQsv = true;
+        job.UseExtraQuality = extraQuality;
+
+        string hook = await RunAndCaptureHookAsync(h, job);
+
+        await Assert.That(hook).Contains("set ::config(use_x265) 1");
+        await Assert.That(hook).Contains("set ::use_x265 1");
+        await Assert.That(hook).DoesNotContain("x264crf \"17\"");
+        await Assert.That(h.Fs.ReadAllText(@"P:\Proj\Up\MKV3D\__ENCODE_3D.cmd")).Contains("-c:v hevc_qsv");
+        await Assert.That(h.Fs.ReadAllText(@"P:\Proj\Up\MKV3D\__ENCODE_3D.cmd")).Contains($"-global_quality {expectedIcq}");
+        await Assert.That(h.Fs.ReadAllText(@"P:\Proj\Up\MKV3D\encode_profile.txt")).Contains($"qsv_icq={expectedIcq}");
+    }
+
+    [Test]
     public async Task NewJob_HasStealDefaultsOffAndDisabled()
     {
         Job job = new();

@@ -46,7 +46,28 @@ public sealed class Job : ObservableObject
     public bool UseNvenc
     {
         get;
-        set => this.SetField(ref field, value);
+        set
+        {
+            if (this.SetField(ref field, value) && value)
+            {
+                this.UseQsv = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Encode 10-bit HEVC via Intel Quick Sync (ICQ 19, or ICQ 18 with Extra Quality) instead of x264.
+    /// </summary>
+    public bool UseQsv
+    {
+        get;
+        set
+        {
+            if (this.SetField(ref field, value) && value)
+            {
+                this.UseNvenc = false;
+            }
+        }
     }
 
     /// <summary>

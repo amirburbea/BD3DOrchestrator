@@ -38,7 +38,7 @@ public partial class MainWindow : Window
         this.AppendLog($"[Settings] Projects: {this._settings.ProjectDirectory}");
         this.AppendLog($"[Settings] Output: {(string.IsNullOrWhiteSpace(this._settings.OutputDirectory) ? "(project folder)" : this._settings.OutputDirectory)}");
         this.AppendLog("Ready. Browse for a 3D MKV file to begin.");
-        _ = this._vm.JobEditor.ProbeNvencAsync();
+        _ = this._vm.JobEditor.ProbeHardwareEncodersAsync();
     }
 
     /// <summary>

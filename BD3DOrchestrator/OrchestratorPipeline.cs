@@ -345,11 +345,17 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
     [GeneratedRegex(@"(<Name>ENCODER_SETTINGS</Name>\s*<String>)[\s\S]*?(</String>)", RegexOptions.IgnoreCase)]
     private static partial Regex EncoderSettingsTagRegex();
 
-    public async Task<bool> ProbeNvencAsync(CancellationToken cancellationToken = default)
+    public Task<bool> ProbeNvencAsync(CancellationToken cancellationToken = default) =>
+        this.ProbeHardwareEncoderAsync("hevc_nvenc", cancellationToken);
+
+    public Task<bool> ProbeQsvAsync(CancellationToken cancellationToken = default) =>
+        this.ProbeHardwareEncoderAsync("hevc_qsv", cancellationToken);
+
+    private async Task<bool> ProbeHardwareEncoderAsync(string encoderName, CancellationToken cancellationToken)
     {
         try
         {
-            const string args = "-v error -f lavfi -i color=black:s=256x256:d=0.1 -frames:v 1 -pix_fmt p010le -c:v hevc_nvenc -f null -";
+            string args = $"-v error -f lavfi -i color=black:s=256x256:d=0.1 -frames:v 1 -pix_fmt p010le -c:v {encoderName} -f null -";
             (int exitCode, _, _) = await processRunner.RunAsync(settings.FfmpegExecutable, args, cancellationToken: cancellationToken).ConfigureAwait(false);
             return exitCode == 0;
         }
@@ -366,7 +372,22 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
     public void PatchForNvenc(string projectMkv3dDir, int cq)
     {
         string nvencFlags = $"-vf \"setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,format=p010le\" -c:v hevc_nvenc -preset p7 -tune hq -rc vbr -cq {cq} -b:v 0 -multipass fullres -spatial-aq 1 -aq-strength 4 -temporal-aq 1 -rc-lookahead 32 -bf 4 -b_ref_mode middle -qp_cb_offset -2 -qp_cr_offset -2 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709";
-        string ffmpegCmd = $"\"{settings.FfmpegExecutable}\" -y -i \"__ENCODE_3D_MOVIE.avs\" {nvencFlags} -f hevc \"MKV3D_3D.265\"";
+        this.PatchForHardwareHevc(projectMkv3dDir, "hevc_nvenc", nvencFlags, "[NVENC]", $"10-bit hevc_nvenc (CQ {cq})", $"0:3D Half-T&B (HEVC 10-bit NVENC CQ {cq})");
+    }
+
+    /// <summary>
+    /// Rewrites a BD3D2MK3D project generated with <c>use_x265=1</c> to encode 10-bit HEVC via ffmpeg's <c>hevc_qsv</c> (low-power VDENC),
+    /// and updates <c>__TAGS_3D.xml</c> + the video track name in <c>__MUX_3D_OPTIONS.json</c> so MediaInfo stays accurate.
+    /// </summary>
+    public void PatchForQsv(string projectMkv3dDir, int icq)
+    {
+        string qsvFlags = $"-vf \"setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,format=p010le\" -c:v hevc_qsv -low_power 1 -preset veryslow -global_quality {icq} -extbrc 1 -look_ahead_depth 32 -bf 4 -b_strategy 1 -adaptive_i 1 -adaptive_b 1 -color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709";
+        this.PatchForHardwareHevc(projectMkv3dDir, "hevc_qsv", qsvFlags, "[QSV]", $"10-bit hevc_qsv (ICQ {icq})", $"0:3D Half-T&B (HEVC 10-bit QSV ICQ {icq})");
+    }
+
+    private void PatchForHardwareHevc(string projectMkv3dDir, string encoderName, string encoderFlags, string logTag, string logSummary, string trackName)
+    {
+        string ffmpegCmd = $"\"{settings.FfmpegExecutable}\" -y -i \"__ENCODE_3D_MOVIE.avs\" {encoderFlags} -f hevc \"MKV3D_3D.265\"";
         string encodeCmdPath = Path.Combine(projectMkv3dDir, "__ENCODE_3D.cmd");
         if (fileSystem.FileExists(encodeCmdPath))
         {
@@ -375,11 +396,11 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
             if (!ReferenceEquals(cmd, patchedCmd) && patchedCmd != cmd)
             {
                 fileSystem.WriteAllText(encodeCmdPath, patchedCmd);
-                logger.Log($"[NVENC] Rewrote __ENCODE_3D.cmd for 10-bit hevc_nvenc (CQ {cq}).");
+                logger.Log($"{logTag} Rewrote __ENCODE_3D.cmd for {logSummary}.");
             }
             else
             {
-                logger.Log("[NVENC] Warning: Could not locate encoder block in __ENCODE_3D.cmd.");
+                logger.Log($"{logTag} Warning: Could not locate encoder block in __ENCODE_3D.cmd.");
             }
         }
         foreach (string tagsName in _tags3DFiles)
@@ -390,8 +411,8 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
                 continue;
             }
             string xml = fileSystem.ReadAllText(tagsPath);
-            string escapedFlags = System.Security.SecurityElement.Escape(nvencFlags) ?? nvencFlags;
-            string patchedXml = EncoderTagRegex().Replace(xml, "$1ffmpeg (hevc_nvenc)$2", 1);
+            string escapedFlags = System.Security.SecurityElement.Escape(encoderFlags) ?? encoderFlags;
+            string patchedXml = EncoderTagRegex().Replace(xml, $"$1ffmpeg ({encoderName})$2", 1);
             patchedXml = EncoderSettingsTagRegex().Replace(patchedXml, $"$1{escapedFlags}$2", 1);
             if (patchedXml != xml)
             {
@@ -424,7 +445,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
                         }
                         if (args[i].Equals("--track-name", StringComparison.OrdinalIgnoreCase))
                         {
-                            args[i + 1] = $"0:3D Half-T&B (HEVC 10-bit NVENC CQ {cq})";
+                            args[i + 1] = trackName;
                             break;
                         }
                     }
@@ -433,7 +454,7 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
             }
             catch (Exception ex)
             {
-                logger.Log($"[NVENC] Warning: Could not update track name in {muxName}: {ex.Message}");
+                logger.Log($"{logTag} Warning: Could not update track name in {muxName}: {ex.Message}");
             }
         }
     }

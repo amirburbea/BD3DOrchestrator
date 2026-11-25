@@ -66,4 +66,28 @@ public sealed class MainWindowViewModelTests
         await Assert.That(vm.Job.MovieTitle).IsEqualTo(string.Empty);
         await Assert.That(vm.Job.UseNvenc).IsTrue();
     }
+
+    [Test]
+    public async Task JobEditorViewModel_QsvUnavailableByDefault_AndDefaultsToQsvWhenNvencUnavailable()
+    {
+        JobEditorViewModel vm = new(new FakeEncodeProfile());
+
+        await Assert.That(vm.IsQsvAvailable).IsFalse();
+        await Assert.That(vm.QsvLabel).Contains("unavailable");
+
+        vm.IsQsvAvailable = true;
+        await Assert.That(vm.QsvLabel).DoesNotContain("unavailable");
+        await Assert.That(vm.QsvLabel).Contains("ICQ 19");
+        await Assert.That(vm.Job.UseQsv).IsTrue();
+        await Assert.That(vm.Job.UseNvenc).IsFalse();
+
+        // If NVENC is also available, NVENC takes priority as the default.
+        vm.IsNvencAvailable = true;
+        await Assert.That(vm.Job.UseNvenc).IsTrue();
+        await Assert.That(vm.Job.UseQsv).IsFalse();
+
+        vm.ResetJob();
+        await Assert.That(vm.Job.UseNvenc).IsTrue();
+        await Assert.That(vm.Job.UseQsv).IsFalse();
+    }
 }

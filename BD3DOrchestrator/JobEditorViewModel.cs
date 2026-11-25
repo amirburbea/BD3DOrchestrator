@@ -31,13 +31,31 @@ public sealed class JobEditorViewModel(IEncodeProfile profile, JobRunner? runner
                 return;
             }
             this.OnPropertyChanged(nameof(this.NvencLabel));
-            this.Job.UseNvenc = value;
+            this.ApplyDefaultHardwareEncoder();
         }
     }
 
     public string NvencLabel => this.IsNvencAvailable
         ? "Encode 10-bit HEVC via NVIDIA NVENC (CQ 19, or CQ 18 with Extra Quality)"
         : "Encode 10-bit HEVC via NVIDIA NVENC (unavailable: no compatible NVIDIA GPU/driver)";
+
+    public bool IsQsvAvailable
+    {
+        get;
+        set
+        {
+            if (!this.SetField(ref field, value))
+            {
+                return;
+            }
+            this.OnPropertyChanged(nameof(this.QsvLabel));
+            this.ApplyDefaultHardwareEncoder();
+        }
+    }
+
+    public string QsvLabel => this.IsQsvAvailable
+        ? "Encode 10-bit HEVC via Intel Quick Sync (ICQ 19, or ICQ 18 with Extra Quality)"
+        : "Encode 10-bit HEVC via Intel Quick Sync (unavailable: no compatible Intel QSV GPU/driver)";
 
     /// <summary>Only a profile that encodes x264 in CRF mode above 0 has a lower CRF to step down to.</summary>
     public bool IsExtraQualityAvailable => profile.ExtraQualityCrf is not null;
@@ -80,7 +98,28 @@ public sealed class JobEditorViewModel(IEncodeProfile profile, JobRunner? runner
 
     public void ClearStealFile() => JobRunner.ClearStealFile(this.Job);
 
-    public void ResetJob() => this.Job = new() { UseNvenc = this.IsNvencAvailable };
+    public void ResetJob()
+    {
+        this.Job = new();
+        this.ApplyDefaultHardwareEncoder();
+    }
+
+    private void ApplyDefaultHardwareEncoder()
+    {
+        if (this.IsNvencAvailable)
+        {
+            this.Job.UseNvenc = true;
+        }
+        else if (this.IsQsvAvailable)
+        {
+            this.Job.UseQsv = true;
+        }
+        else
+        {
+            this.Job.UseNvenc = false;
+            this.Job.UseQsv = false;
+        }
+    }
 
     public async Task ProbeNvencAsync()
     {
@@ -95,4 +134,20 @@ public sealed class JobEditorViewModel(IEncodeProfile profile, JobRunner? runner
             logger?.Log("[NVENC] 10-bit hevc_nvenc hardware support detected.");
         }
     }
+
+    public async Task ProbeQsvAsync()
+    {
+        if (runner is null)
+        {
+            return;
+        }
+        bool supported = await Task.Run(() => runner.ProbeQsvAsync());
+        this.IsQsvAvailable = supported;
+        if (supported)
+        {
+            logger?.Log("[QSV] 10-bit hevc_qsv hardware support detected.");
+        }
+    }
+
+    public Task ProbeHardwareEncodersAsync() => Task.WhenAll(this.ProbeNvencAsync(), this.ProbeQsvAsync());
 }
