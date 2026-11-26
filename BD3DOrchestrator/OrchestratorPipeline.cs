@@ -356,6 +356,33 @@ public partial class OrchestratorPipeline(AppSettings settings, IEncodeProfile p
             "-v error -f lavfi -i color=black:s=256x256:d=0.1 -frames:v 1 -init_hw_device dxva2=dx -init_hw_device qsv=hw@dx -filter_hw_device hw -vf \"format=nv12,hwupload=extra_hw_frames=16,vpp_qsv=format=p010le:out_color_matrix=bt709:out_color_primaries=bt709:out_color_transfer=bt709:out_range=tv\" -c:v hevc_qsv -f null -",
             cancellationToken);
 
+    /// <summary>
+    /// Probes all supported hardware capabilities in parallel. <see cref="HardwareCapabilities.VppQsv"/> is only
+    /// reported when <see cref="HardwareCapabilities.Qsv"/> is also supported.
+    /// </summary>
+    public async Task<HardwareCapabilities> ProbeCapabilitiesAsync(CancellationToken cancellationToken = default)
+    {
+        Task<bool> nvencTask = this.ProbeNvencAsync(cancellationToken);
+        Task<bool> qsvTask = this.ProbeQsvAsync(cancellationToken);
+        Task<bool> vppQsvTask = this.ProbeQsvVppAsync(cancellationToken);
+        await Task.WhenAll(nvencTask, qsvTask, vppQsvTask).ConfigureAwait(false);
+
+        HardwareCapabilities capabilities = HardwareCapabilities.None;
+        if (await nvencTask)
+        {
+            capabilities |= HardwareCapabilities.Nvenc;
+        }
+        if (await qsvTask)
+        {
+            capabilities |= HardwareCapabilities.Qsv;
+            if (await vppQsvTask)
+            {
+                capabilities |= HardwareCapabilities.VppQsv;
+            }
+        }
+        return capabilities;
+    }
+
     private Task<bool> ProbeHardwareEncoderAsync(string encoderName, CancellationToken cancellationToken) =>
         this.RunFfmpegProbeAsync(
             $"-v error -f lavfi -i color=black:s=256x256:d=0.1 -frames:v 1 -pix_fmt p010le -c:v {encoderName} -f null -",

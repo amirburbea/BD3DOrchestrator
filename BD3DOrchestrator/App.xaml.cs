@@ -1,13 +1,18 @@
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 
 namespace BD3DOrchestrator;
 
-public partial class App(Func<MainWindow> mainWindowFactory) : Application
+public partial class App(
+    Func<HardwareScannerWindow> scannerWindowFactory,
+    Func<MainWindow> mainWindowFactory,
+    IJobRunner runner
+) : Application
 {
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         // 1. AppDomain Unhandled Exceptions (general thread pool / background threads)
@@ -36,8 +41,36 @@ public partial class App(Func<MainWindow> mainWindowFactory) : Application
             LogCrash("TaskScheduler", args.Exception);
             args.SetObserved();
         };
-        this.MainWindow = mainWindowFactory();
-        this.MainWindow.Show();
+        this.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        using CancellationTokenSource cts = new();
+        HardwareScannerWindow scanner = scannerWindowFactory();
+        scanner.Closed += (_, _) => cts.Cancel();
+        scanner.Show();
+
+        try
+        {
+            await Task.Run(() => runner.ProbeCapabilitiesAsync(cts.Token));
+        }
+        catch (OperationCanceledException)
+        {
+            this.Shutdown();
+            return;
+        }
+        catch
+        {
+        }
+
+        if (cts.IsCancellationRequested)
+        {
+            this.Shutdown();
+            return;
+        }
+
+        MainWindow mainWindow = mainWindowFactory();
+        this.MainWindow = mainWindow;
+        this.ShutdownMode = ShutdownMode.OnMainWindowClose;
+        mainWindow.Show();
+        scanner.Close();
     }
 
     private static void LogCrash(string source, Exception ex)

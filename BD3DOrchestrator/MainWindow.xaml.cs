@@ -38,7 +38,15 @@ public partial class MainWindow : Window
         this.AppendLog($"[Settings] Projects: {this._settings.ProjectDirectory}");
         this.AppendLog($"[Settings] Output: {(string.IsNullOrWhiteSpace(this._settings.OutputDirectory) ? "(project folder)" : this._settings.OutputDirectory)}");
         this.AppendLog("Ready. Browse for a 3D MKV file to begin.");
-        _ = this._vm.JobEditor.ProbeHardwareEncodersAsync();
+        if (this._vm.JobEditor.Capabilities.HasFlag(HardwareCapabilities.Nvenc))
+        {
+            this.AppendLog("[NVENC] 10-bit hevc_nvenc hardware support detected.");
+        }
+        if (this._vm.JobEditor.Capabilities.HasFlag(HardwareCapabilities.Qsv))
+        {
+            string vppNote = this._vm.JobEditor.Capabilities.HasFlag(HardwareCapabilities.VppQsv) ? " (with vpp_qsv)" : "";
+            this.AppendLog($"[QSV] 10-bit hevc_qsv hardware support detected{vppNote}.");
+        }
     }
 
     /// <summary>

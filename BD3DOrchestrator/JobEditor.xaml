@@ -49,14 +49,35 @@
                           IsEnabled="{Binding IsExtraQualityAvailable}"
                           Content="{Binding ExtraQualityLabel}"
                           ToolTip="One CRF step below the default; all other settings stay the same."/>
-                <CheckBox IsChecked="{Binding Job.UseNvenc}"
-                          IsEnabled="{Binding IsNvencAvailable}"
-                          Content="{Binding NvencLabel}"
-                          ToolTip="Uses ffmpeg hevc_nvenc instead of x264. Only enabled when 10-bit hevc_nvenc works on this PC."/>
-                <CheckBox IsChecked="{Binding Job.UseQsv}"
-                          IsEnabled="{Binding IsQsvAvailable}"
-                          Content="{Binding QsvLabel}"
-                          ToolTip="Uses ffmpeg hevc_qsv (10-bit VME) instead of x264. Only enabled when 10-bit hevc_qsv works on this PC."/>
+                <StackPanel IsEnabled="{Binding IsHardwareEncodingAvailable}" Margin="0,4,0,4">
+                    <StackPanel Orientation="Horizontal">
+                        <CheckBox IsChecked="{Binding UseHardwareHevc}"
+                                  Content="Use hardware encoded HEVC"
+                                  VerticalAlignment="Center"
+                                  Margin="0,0,8,0"
+                                  ToolTip="Uses 10-bit hardware HEVC instead of x264."/>
+                        <ComboBox ItemsSource="{Binding AvailableHardwareEncoders}"
+                                  SelectedItem="{Binding SelectedHardwareEncoder}"
+                                  IsEnabled="{Binding UseHardwareHevc}"
+                                  VerticalAlignment="Center"
+                                  MinWidth="90"/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding HardwareQualitySummary}"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               Margin="22,2,0,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding UseHardwareHevc}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
             </StackPanel>
         </Border>
         <!-- Steal Tracks from Previous Encode -->

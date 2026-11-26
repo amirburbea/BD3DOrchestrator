@@ -20,13 +20,18 @@ public sealed class JobRunner(
     IFileSystem fileSystem,
     IMessageLogger logger,
     IProcessManager processManager,
-    TimeProvider timeProvider)
+    TimeProvider timeProvider) : IJobRunner
 {
-    public Task<bool> ProbeNvencAsync(CancellationToken cancellationToken = default) =>
-        pipeline.ProbeNvencAsync(cancellationToken);
+    private HardwareCapabilities? _probedCapabilities;
 
-    public Task<bool> ProbeQsvAsync(CancellationToken cancellationToken = default) =>
-        pipeline.ProbeQsvAsync(cancellationToken);
+    public HardwareCapabilities Capabilities => this._probedCapabilities ?? HardwareCapabilities.None;
+
+    public async Task<HardwareCapabilities> ProbeCapabilitiesAsync(CancellationToken cancellationToken = default)
+    {
+        HardwareCapabilities capabilities = await pipeline.ProbeCapabilitiesAsync(cancellationToken).ConfigureAwait(false);
+        this._probedCapabilities = capabilities;
+        return capabilities;
+    }
 
     /// <summary>Inspects the input and fills in the job's title, detection result and suggested options.</summary>
     public async Task LoadAsync(Job job, string path, CancellationToken cancellationToken = default)
@@ -117,7 +122,7 @@ public sealed class JobRunner(
         bool useNvenc = job.UseNvenc;
         bool useQsv = !useNvenc && job.UseQsv;
         int nvencCq = job.UseExtraQuality ? 18 : 19;
-        int qsvIcq = job.UseExtraQuality ? 15 : 16;
+        int qsvIcq = job.UseExtraQuality ? 14 : 15;
         string stealPath = job.StealPath.Trim();
         bool stealAudio = !string.IsNullOrEmpty(stealPath) && job.StealAudio;
         bool stealSubtitles = !string.IsNullOrEmpty(stealPath) && job.StealSubtitles;
@@ -289,7 +294,8 @@ public sealed class JobRunner(
         }
         else if (useQsv)
         {
-            bool useQsvVpp = await pipeline.ProbeQsvVppAsync(cancellationToken).ConfigureAwait(false);
+            bool useQsvVpp = job.UseQsvVpp
+                || (this._probedCapabilities is null && await pipeline.ProbeQsvVppAsync(cancellationToken).ConfigureAwait(false));
             pipeline.PatchForQsv(projectFolder, qsvIcq, useQsvVpp);
         }
         try

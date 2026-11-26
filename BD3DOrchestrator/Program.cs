@@ -79,7 +79,10 @@ public static class Program
             .AddSingleton<MediaInspector>()
             .AddSingleton<OrchestratorPipeline>()
             .AddSingleton<JobRunner>()
+            .AddSingleton<IJobRunner>(sp => sp.GetRequiredService<JobRunner>())
             .AddSingleton<App>()
+            .AddSingleton<HardwareScannerWindow>()
+            .AddSingleton<Func<HardwareScannerWindow>>(sp => () => sp.GetRequiredService<HardwareScannerWindow>())
             .AddSingleton<MainWindow>()
             .AddSingleton<Func<MainWindow>>(sp => () => sp.GetRequiredService<MainWindow>());
         return builder.Build();

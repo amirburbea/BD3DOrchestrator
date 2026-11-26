@@ -56,7 +56,7 @@ public sealed class Job : ObservableObject
     }
 
     /// <summary>
-    /// Encode 10-bit HEVC via Intel Quick Sync (ICQ 16, or ICQ 15 with Extra Quality) instead of x264.
+    /// Encode 10-bit HEVC via Intel Quick Sync (ICQ 15, or ICQ 14 with Extra Quality) instead of x264.
     /// </summary>
     public bool UseQsv
     {
@@ -67,7 +67,20 @@ public sealed class Job : ObservableObject
             {
                 this.UseNvenc = false;
             }
+            else if (!value)
+            {
+                this.UseQsvVpp = false;
+            }
         }
+    }
+
+    /// <summary>
+    /// When <see cref="UseQsv"/> is true, use hardware <c>vpp_qsv</c> for <c>nv12 -> p010le</c> conversion instead of software <c>format=p010le</c>.
+    /// </summary>
+    public bool UseQsvVpp
+    {
+        get;
+        set => this.SetField(ref field, value);
     }
 
     /// <summary>

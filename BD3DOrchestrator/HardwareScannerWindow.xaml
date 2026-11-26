@@ -1,0 +1,20 @@
+<Window x:Class="BD3DOrchestrator.HardwareScannerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="BD3D Orchestrator"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        SizeToContent="WidthAndHeight"
+        ShowInTaskbar="True">
+    <StackPanel Margin="28,22,28,22" HorizontalAlignment="Center">
+        <TextBlock Text="Assessing capabilities..."
+                   FontSize="15"
+                   FontWeight="SemiBold"
+                   Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                   HorizontalAlignment="Center"/>
+        <ProgressBar IsIndeterminate="True"
+                     Width="240"
+                     Height="6"
+                     Margin="0,14,0,0"/>
+    </StackPanel>
+</Window>
