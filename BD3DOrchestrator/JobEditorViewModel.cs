@@ -68,7 +68,7 @@ public sealed class JobEditorViewModel : ObservableObject
                 return this.SelectedHardwareEncoder switch
                 {
                     HardwareEncoder.Nvenc => "Extra quality: encode at CQ 18 instead of 19 (bigger file)",
-                    HardwareEncoder.QsvVpp or HardwareEncoder.Qsv => "Extra quality: encode at ICQ 14 instead of 15 (bigger file)",
+                    HardwareEncoder.QsvVpp or HardwareEncoder.Qsv => "Extra quality: encode at ICQ 15 instead of 16 (bigger file)",
                     _ => string.Empty
                 };
             }
@@ -81,8 +81,8 @@ public sealed class JobEditorViewModel : ObservableObject
     public string HardwareQualitySummary => this.SelectedHardwareEncoder switch
     {
         HardwareEncoder.Nvenc => "10-bit hevc_nvenc — CQ 19, or CQ 18 with Extra Quality",
-        HardwareEncoder.QsvVpp => "10-bit hevc_qsv (vpp_qsv) — ICQ 15, or ICQ 14 with Extra Quality",
-        HardwareEncoder.Qsv => "10-bit hevc_qsv (software p010le) — ICQ 15, or ICQ 14 with Extra Quality",
+        HardwareEncoder.QsvVpp => "10-bit hevc_qsv (vpp_qsv) — ICQ 16, or ICQ 15 with Extra Quality",
+        HardwareEncoder.Qsv => "10-bit hevc_qsv (software p010le) — ICQ 16, or ICQ 15 with Extra Quality",
         _ => string.Empty
     };
 

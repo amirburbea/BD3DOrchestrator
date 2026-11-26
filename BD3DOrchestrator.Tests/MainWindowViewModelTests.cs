@@ -98,8 +98,8 @@ public sealed class MainWindowViewModelTests
         await Assert.That(vm.AvailableHardwareEncoders).Contains(HardwareEncoder.QsvVpp);
         await Assert.That(vm.AvailableHardwareEncoders).Contains(HardwareEncoder.Qsv);
         await Assert.That(vm.AvailableHardwareEncoders).DoesNotContain(HardwareEncoder.Nvenc);
-        await Assert.That(vm.HardwareQualitySummary).Contains("ICQ 15");
-        await Assert.That(vm.ExtraQualityLabel).Contains("ICQ 14 instead of 15");
+        await Assert.That(vm.HardwareQualitySummary).Contains("ICQ 16");
+        await Assert.That(vm.ExtraQualityLabel).Contains("ICQ 15 instead of 16");
         await Assert.That(vm.Job.UseQsv).IsTrue();
         await Assert.That(vm.Job.UseQsvVpp).IsTrue();
         await Assert.That(vm.Job.UseNvenc).IsFalse();
@@ -132,8 +132,8 @@ public sealed class MainWindowViewModelTests
         await Assert.That(vm.Job.UseQsv).IsTrue();
         await Assert.That(vm.Job.UseQsvVpp).IsTrue();
         await Assert.That(vm.Job.UseNvenc).IsFalse();
-        await Assert.That(vm.HardwareQualitySummary).Contains("ICQ 15");
-        await Assert.That(vm.ExtraQualityLabel).Contains("ICQ 14 instead of 15");
+        await Assert.That(vm.HardwareQualitySummary).Contains("ICQ 16");
+        await Assert.That(vm.ExtraQualityLabel).Contains("ICQ 15 instead of 16");
 
         vm.ResetJob();
         await Assert.That(vm.SelectedHardwareEncoder).IsEqualTo(HardwareEncoder.Nvenc);
