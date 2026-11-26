@@ -54,7 +54,7 @@ public sealed class JobEditorViewModel(IEncodeProfile profile, JobRunner? runner
     }
 
     public string QsvLabel => this.IsQsvAvailable
-        ? "Encode 10-bit HEVC via Intel Quick Sync (ICQ 17, or ICQ 16 with Extra Quality)"
+        ? "Encode 10-bit HEVC via Intel Quick Sync (ICQ 16, or ICQ 15 with Extra Quality)"
         : "Encode 10-bit HEVC via Intel Quick Sync (unavailable: no compatible Intel QSV GPU/driver)";
 
     /// <summary>Only a profile that encodes x264 in CRF mode above 0 has a lower CRF to step down to.</summary>

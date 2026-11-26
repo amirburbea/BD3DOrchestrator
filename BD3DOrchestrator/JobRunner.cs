@@ -117,7 +117,7 @@ public sealed class JobRunner(
         bool useNvenc = job.UseNvenc;
         bool useQsv = !useNvenc && job.UseQsv;
         int nvencCq = job.UseExtraQuality ? 18 : 19;
-        int qsvIcq = job.UseExtraQuality ? 16 : 17;
+        int qsvIcq = job.UseExtraQuality ? 15 : 16;
         string stealPath = job.StealPath.Trim();
         bool stealAudio = !string.IsNullOrEmpty(stealPath) && job.StealAudio;
         bool stealSubtitles = !string.IsNullOrEmpty(stealPath) && job.StealSubtitles;

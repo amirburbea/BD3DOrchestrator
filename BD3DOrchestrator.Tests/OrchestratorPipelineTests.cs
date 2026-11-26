@@ -466,11 +466,11 @@ public sealed class OrchestratorPipelineTests
         fs.AddFile(@"P:\Proj\MKV3D\__MUX_3D_OPTIONS.json", """["--output","out.mkv","--track-name","0:3D Half-T&B (x265)","--stereo-mode","0:3","--language","0:eng","--default-duration","0:24000/1001p","MKV3D_3D.265"]""");
         OrchestratorPipeline pipeline = CreatePipeline(fs);
 
-        pipeline.PatchForQsv(@"P:\Proj\MKV3D", icq: 17);
+        pipeline.PatchForQsv(@"P:\Proj\MKV3D", icq: 16);
 
         string cmd = fs.ReadAllText(@"P:\Proj\MKV3D\__ENCODE_3D.cmd");
         await Assert.That(cmd).Contains(@"""C:\tools\ffmpeg.exe"" -y -i ""__ENCODE_3D_MOVIE.avs"" -vf ""setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709,format=p010le"" -c:v hevc_qsv");
-        await Assert.That(cmd).Contains("-low_power 0 -preset veryslow -global_quality 17");
+        await Assert.That(cmd).Contains("-low_power 0 -preset veryslow -global_quality 16");
         await Assert.That(cmd).Contains("-extbrc 1 -look_ahead_depth 32");
         await Assert.That(cmd).Contains("-color_range tv -colorspace bt709 -color_primaries bt709 -color_trc bt709");
         await Assert.That(cmd).Contains(@"-f hevc ""MKV3D_3D.265""");
@@ -483,7 +483,7 @@ public sealed class OrchestratorPipelineTests
         await Assert.That(tags).DoesNotContain("--crf 18");
 
         string mux = fs.ReadAllText(@"P:\Proj\MKV3D\__MUX_3D_OPTIONS.json");
-        await Assert.That(mux).Contains("0:3D Half-T&B (HEVC 10-bit QSV ICQ 17)");
+        await Assert.That(mux).Contains("0:3D Half-T&B (HEVC 10-bit QSV ICQ 16)");
     }
 
     [Test]
