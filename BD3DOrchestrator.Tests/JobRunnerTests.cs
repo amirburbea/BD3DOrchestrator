@@ -376,6 +376,37 @@ public sealed class JobRunnerTests
     }
 
     [Test]
+    public async Task RunAsync_StealAudioAndSubtitles_ExtractsIntoProjectDirTempAndMovesToProjectFolder()
+    {
+        using Harness h = new();
+        h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__ENCODE_3D_LAUNCHER.cmd");
+        h.Fs.AddFile(@"M:\Old\Up.3d.tab.mkv");
+        h.Fs.AddFile(@"P:\Proj\Up\MKV3D\__MUX_3D_OPTIONS.json", "[\"-o\", \"out.mkv\"]");
+        h.ProcessRunner.EnqueueHandler(call =>
+        {
+            if (call.Executable.EndsWith("mkvmerge.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                int oIdx = call.Arguments.IndexOf(" -o \"", StringComparison.Ordinal);
+                int start = oIdx + 5;
+                int end = call.Arguments.IndexOf('"', start);
+                string outMks = call.Arguments[start..end];
+                h.Fs.AddFile(outMks);
+            }
+            return (0, string.Empty, string.Empty);
+        });
+        Job job = LoadedJob("Up");
+        job.StealPath = @"M:\Old\Up.3d.tab.mkv";
+        job.StealAudio = true;
+        job.StealSubtitles = true;
+
+        await RunAndCaptureHookAsync(h, job);
+
+        await Assert.That(h.Fs.FileExists(@"P:\Proj\Up\MKV3D\stolen_tracks.mks")).IsTrue();
+        string[] stealDirs = Array.FindAll(h.Fs.GetDirectories(@"P:\Proj"), d => Path.GetFileName(d).StartsWith(".steal_", StringComparison.Ordinal));
+        await Assert.That(stealDirs.Length).IsEqualTo(0);
+    }
+
+    [Test]
     public async Task RunAsync_ExtraQualityOff_LeavesProfileCrfAlone()
     {
         using Harness h = new();

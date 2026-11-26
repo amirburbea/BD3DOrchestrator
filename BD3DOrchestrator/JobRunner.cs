@@ -159,6 +159,18 @@ public sealed class JobRunner(
             logger.Log($"[Steal] Stealing {what} from '{Path.GetFileName(stealPath)}' -> unchecking those streams in BD3D2MK3D.");
         }
         string? resolvedProject = null;
+        // Start donor track extraction in parallel into a GUID folder under ProjectDirectory (same drive/exclusions as projectFolder).
+        string? stealTempDir = null;
+        Task<string?>? stealTask = null;
+        if (stealAudio || stealSubtitles)
+        {
+            stealTempDir = Path.Combine(settings.ProjectDirectory, $".steal_{Guid.NewGuid():N}");
+            fileSystem.CreateDirectory(stealTempDir);
+            string tempStolenPath = Path.Combine(stealTempDir, "stolen_tracks.mks");
+            stealTask = pipeline.ExtractTracksAsync(stealPath, tempStolenPath, stealAudio, stealSubtitles, cancellationToken: cancellationToken);
+        }
+        try
+        {
         // Create an isolated temp job sandbox so BD3D2MK3D's original install folder is never touched or modified.
         // This guarantees complete isolation between multiple parallel instances or manual runs.
         string jobTempDir = Path.Combine(Path.GetTempPath(), "BD3DOrchestrator", $"Job_{Guid.NewGuid():N}");
@@ -326,14 +338,12 @@ public sealed class JobRunner(
         // Update JSON mux options with companion files, EAC3, & stolen or embedded SRT tracks
         List<string> extraMksFiles = [];
         bool stolenHasAudio = false;
-        if (stealAudio || stealSubtitles)
+        if (stealTask is not null && await stealTask.ConfigureAwait(false) is { } extracted)
         {
             string outStolen = Path.Combine(projectFolder, "stolen_tracks.mks");
-            if (await pipeline.ExtractTracksAsync(stealPath, outStolen, stealAudio, stealSubtitles, cancellationToken: cancellationToken).ConfigureAwait(false) is { } extracted)
-            {
-                extraMksFiles.Add(extracted);
-                stolenHasAudio = stealAudio;
-            }
+            fileSystem.MoveFile(extracted, outStolen, overwrite: true);
+            extraMksFiles.Add(outStolen);
+            stolenHasAudio = stealAudio;
         }
         if (!stealSubtitles && inspection.EmbeddedSrtTrackIds.Count > 0)
         {
@@ -366,6 +376,29 @@ public sealed class JobRunner(
         {
             logger.Log($"[Error] Batch launcher not found in {projectFolder}");
             return false;
+        }
+        }
+        finally
+        {
+            if (stealTask is { IsCompleted: false })
+            {
+                try
+                {
+                    await stealTask.ConfigureAwait(false);
+                }
+                catch { /* Ignore */ }
+            }
+            if (stealTempDir is not null)
+            {
+                try
+                {
+                    if (fileSystem.DirectoryExists(stealTempDir))
+                    {
+                        fileSystem.DeleteDirectory(stealTempDir, recursive: true);
+                    }
+                }
+                catch { /* Ignore */ }
+            }
         }
     }
 
@@ -493,23 +526,33 @@ after 150 {{
 
     public void CleanupStaleTempDirectories()
     {
+        this.DeleteStaleDirectories(Path.Combine(Path.GetTempPath(), "BD3DOrchestrator"), prefix: null);
+        this.DeleteStaleDirectories(settings.ProjectDirectory, prefix: ".steal_");
+    }
+
+    private void DeleteStaleDirectories(string rootDir, string? prefix)
+    {
         try
         {
-            string baseTemp = Path.Combine(Path.GetTempPath(), "BD3DOrchestrator");
-            if (fileSystem.DirectoryExists(baseTemp))
+            if (!fileSystem.DirectoryExists(rootDir))
             {
-                foreach (string subDir in fileSystem.GetDirectories(baseTemp))
+                return;
+            }
+            foreach (string subDir in fileSystem.GetDirectories(rootDir))
+            {
+                if (prefix is not null && !Path.GetFileName(subDir).StartsWith(prefix, StringComparison.Ordinal))
                 {
-                    // Clean up any stale temp directories older than 12 hours (e.g. from previous crashes)
-                    if (timeProvider.GetLocalNow().DateTime - fileSystem.GetDirectoryCreationTime(subDir) > TimeSpan.FromHours(12))
+                    continue;
+                }
+                // Clean up any stale temp directories older than 12 hours (e.g. from previous crashes)
+                if (timeProvider.GetLocalNow().DateTime - fileSystem.GetDirectoryCreationTime(subDir) > TimeSpan.FromHours(12))
+                {
+                    try
                     {
-                        try
-                        {
-                            fileSystem.DeleteDirectory(subDir, recursive: true);
-                        }
-                        catch
-                        {
-                        }
+                        fileSystem.DeleteDirectory(subDir, recursive: true);
+                    }
+                    catch
+                    {
                     }
                 }
             }

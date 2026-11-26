@@ -69,6 +69,14 @@ public sealed class FakeFileSystem : IFileSystem
         this.AddFile(dst, content, len);
     }
 
+    public void MoveFile(string sourceFileName, string destFileName, bool overwrite = false)
+    {
+        this.CopyFile(sourceFileName, destFileName, overwrite);
+        string src = Normalize(sourceFileName);
+        this._files.Remove(src);
+        this._fileLengths.Remove(src);
+    }
+
     public long GetFileLength(string path)
     {
         string normalized = Normalize(path);

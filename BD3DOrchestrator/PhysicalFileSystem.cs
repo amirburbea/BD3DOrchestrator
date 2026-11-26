@@ -12,6 +12,7 @@ public sealed class PhysicalFileSystem : IFileSystem
     public string ReadAllText(string path) => File.ReadAllText(path);
     public void WriteAllText(string path, string contents) => File.WriteAllText(path, contents);
     public void CopyFile(string sourceFileName, string destFileName, bool overwrite = false) => File.Copy(sourceFileName, destFileName, overwrite);
+    public void MoveFile(string sourceFileName, string destFileName, bool overwrite = false) => File.Move(sourceFileName, destFileName, overwrite);
     public long GetFileLength(string path) => new FileInfo(path).Length;
     public bool DirectoryExists(string path) => Directory.Exists(path);
     public void CreateDirectory(string path) => Directory.CreateDirectory(path);

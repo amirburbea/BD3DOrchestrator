@@ -11,6 +11,7 @@ public interface IFileSystem
     string ReadAllText(string path);
     void WriteAllText(string path, string contents);
     void CopyFile(string sourceFileName, string destFileName, bool overwrite = false);
+    void MoveFile(string sourceFileName, string destFileName, bool overwrite = false);
     long GetFileLength(string path);
     bool DirectoryExists(string path);
     void CreateDirectory(string path);
