@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\BD3DOrchestrator\BD3DOrchestrator.csproj" />
+    <ProjectReference Include="..\Sub3DConverter\Sub3DConverter.csproj" />
   </ItemGroup>
 
   <ItemGroup>

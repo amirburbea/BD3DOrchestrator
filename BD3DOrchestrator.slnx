@@ -1,4 +1,5 @@
 <Solution>
   <Project Path="BD3DOrchestrator.Tests/BD3DOrchestrator.Tests.csproj" />
   <Project Path="BD3DOrchestrator/BD3DOrchestrator.csproj" />
+  <Project Path="Sub3DConverter/Sub3DConverter.csproj" />
 </Solution>
